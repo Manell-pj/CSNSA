@@ -18,3 +18,4 @@ try {
         'erro' => $e->getMessage(),
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 }
+    
