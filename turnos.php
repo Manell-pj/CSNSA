@@ -1,9 +1,10 @@
-<?php
+﻿<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 
 $utilizadorSessao = require_login($conn);
+ac_require_permission($conn, $utilizadorSessao, 'turnos.gerir');
 
 function e($value)
 {
@@ -35,6 +36,174 @@ function nullable_int($value)
     return $value === '' ? null : (int) $value;
 }
 
+function hora_valida($hora)
+{
+    return preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $hora) === 1;
+}
+
+function hora_para_minutos($hora)
+{
+    if (!hora_valida($hora)) {
+        return null;
+    }
+
+    [$h, $m] = explode(':', $hora);
+    return ((int) $h) * 60 + ((int) $m);
+}
+
+function periodos_para_intervalos(array $periodos)
+{
+    $intervalos = [];
+
+    foreach ($periodos as $idx => $periodo) {
+        $inicio = hora_para_minutos($periodo['inicio']);
+        $fim = hora_para_minutos($periodo['fim']);
+
+        if ($inicio === null || $fim === null) {
+            continue;
+        }
+
+        if ($fim > $inicio) {
+            $intervalos[] = ['start' => $inicio, 'end' => $fim, 'orig' => $idx];
+            $intervalos[] = ['start' => $inicio + 1440, 'end' => $fim + 1440, 'orig' => $idx];
+        } else {
+            $intervalos[] = ['start' => $inicio, 'end' => $fim + 1440, 'orig' => $idx];
+        }
+    }
+
+    return $intervalos;
+}
+
+function sobreposicao_periodos(array $periodos)
+{
+    $intervalos = periodos_para_intervalos($periodos);
+
+    foreach ($intervalos as $i => $primeiro) {
+        foreach ($intervalos as $j => $segundo) {
+            if ($i === $j || $primeiro['orig'] === $segundo['orig']) {
+                continue;
+            }
+
+            if ($primeiro['start'] < $segundo['end'] && $segundo['start'] < $primeiro['end']) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function limpar_periodos_post(array $inicios, array $fims)
+{
+    $periodos = [];
+
+    foreach ($inicios as $indice => $inicio) {
+        $inicio = trim((string) $inicio);
+        $fim = trim((string) ($fims[$indice] ?? ''));
+
+        if ($inicio === '' && $fim === '') {
+            continue;
+        }
+
+        $periodos[] = [
+            'inicio' => $inicio,
+            'fim' => $fim,
+        ];
+    }
+
+    return $periodos;
+}
+
+function validar_periodos(array $periodos, &$erro = null)
+{
+    if (empty($periodos)) {
+        $erro = 'Adicione pelo menos um período de turno.';
+        return false;
+    }
+
+    foreach ($periodos as $periodo) {
+        if (!hora_valida($periodo['inicio']) || !hora_valida($periodo['fim'])) {
+            $erro = 'Cada período deve ter início e fim válidos no formato HH:MM.';
+            return false;
+        }
+
+        if ($periodo['inicio'] === $periodo['fim']) {
+            $erro = 'O início e a saída de um período não podem ser iguais.';
+            return false;
+        }
+    }
+
+    if (sobreposicao_periodos($periodos)) {
+        $erro = 'Os períodos não podem sobrepor-se.';
+        return false;
+    }
+
+    return true;
+}
+
+function periodo_resumo(array $periodos)
+{
+    if (empty($periodos)) {
+        return '-';
+    }
+
+    $resumos = [];
+    foreach ($periodos as $periodo) {
+        $inicio = $periodo['inicio'] ?? $periodo['hora_inicio'] ?? '';
+        $fim = $periodo['fim'] ?? $periodo['hora_fim'] ?? '';
+        $resumos[] = sprintf('%s–%s', $inicio, $fim);
+    }
+
+    return implode(', ', $resumos);
+}
+
+function excluir_periodos_turno($conn, $turnoId)
+{
+    if (!$turnoId || !fe_table_exists($conn, 'turno_periodos')) {
+        return;
+    }
+
+    $stmt = mysqli_prepare($conn, 'DELETE FROM turno_periodos WHERE turno_id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $turnoId);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+}
+
+function salvar_periodos_turno($conn, $turnoId, array $periodos, int $toleranciaAtraso, int $toleranciaSaida, float $horasPrevistas)
+{
+    if (!$turnoId || empty($periodos) || !fe_table_exists($conn, 'turno_periodos')) {
+        return;
+    }
+
+    $stmt = mysqli_prepare($conn, 'INSERT INTO turno_periodos (turno_id, sequencia, hora_inicio, hora_fim, cruza_dia, tolerancia_antes_min, tolerancia_depois_min, minutos_previstos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+
+    foreach ($periodos as $indice => $periodo) {
+        $sequencia = $indice + 1;
+        $inicioMinutos = hora_para_minutos($periodo['inicio']);
+        $fimMinutos = hora_para_minutos($periodo['fim']);
+        $cruzaDia = $fimMinutos <= $inicioMinutos ? 1 : 0;
+        $minutosPrevistos = $fimMinutos > $inicioMinutos
+            ? $fimMinutos - $inicioMinutos
+            : ($fimMinutos + 1440) - $inicioMinutos;
+
+        mysqli_stmt_bind_param(
+            $stmt,
+            'iissiiii',
+            $turnoId,
+            $sequencia,
+            $periodo['inicio'],
+            $periodo['fim'],
+            $cruzaDia,
+            $toleranciaAtraso,
+            $toleranciaSaida,
+            $minutosPrevistos
+        );
+        mysqli_stmt_execute($stmt);
+    }
+
+    mysqli_stmt_close($stmt);
+}
+
 function dia_semana_nome($dia)
 {
     $dias = [
@@ -50,17 +219,38 @@ function dia_semana_nome($dia)
     return $dias[(int) $dia] ?? 'Todos os dias';
 }
 
+function obter_periodos_turno($conn, $turnoId)
+{
+    if (!$turnoId || !fe_table_exists($conn, 'turno_periodos')) {
+        return [];
+    }
+
+    $periodos = [];
+    $stmt = mysqli_prepare($conn, 'SELECT id, sequencia, hora_inicio, hora_fim, cruza_dia FROM turno_periodos WHERE turno_id = ? AND ativo = 1 ORDER BY sequencia ASC');
+    mysqli_stmt_bind_param($stmt, 'i', $turnoId);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+
+    while ($row = mysqli_fetch_assoc($result)) {
+        $periodos[] = $row;
+    }
+
+    mysqli_stmt_close($stmt);
+    return $periodos;
+}
+
 $temTabelaFuncionarios = fe_table_exists($conn, 'funcionarios');
 $temFuncionarioHorario = fe_table_exists($conn, 'horarios_turno') && fe_column_exists($conn, 'horarios_turno', 'funcionario_id');
+$temTabelaTurnoPeriodos = fe_table_exists($conn, 'turno_periodos');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    ac_require_permission($conn, $utilizadorSessao, 'turnos.gerir');
     $acao = $_POST['acao'] ?? '';
 
     if ($acao === 'criar') {
         $nome = get_post_value('nome');
         $codigo = get_post_value('codigo') ?: null;
-        $horaEntrada = get_post_value('hora_entrada');
-        $horaSaida = get_post_value('hora_saida');
+        $periodos = limpar_periodos_post($_POST['periodo_inicio'] ?? [], $_POST['periodo_fim'] ?? []);
         $inicioPausa = nullable_time($_POST['inicio_pausa'] ?? '');
         $fimPausa = nullable_time($_POST['fim_pausa'] ?? '');
         $toleranciaAtraso = (int) ($_POST['tolerancia_entrada_min'] ?? 0);
@@ -69,19 +259,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $turnoNoturno = isset($_POST['turno_noturno']) ? 1 : 0;
         $ativo = isset($_POST['ativo']) ? 1 : 0;
 
-        if ($nome === '' || $horaEntrada === '' || $horaSaida === '') {
-            redirect_with_message('danger', 'Preencha o nome, hora de entrada e hora de saída.');
+        if ($nome === '') {
+            redirect_with_message('danger', 'Preencha o nome do turno.');
+        }
+
+        if (!validar_periodos($periodos, $erro)) {
+            redirect_with_message('danger', $erro);
         }
 
         if (($inicioPausa === null && $fimPausa !== null) || ($inicioPausa !== null && $fimPausa === null)) {
             redirect_with_message('danger', 'Preencha o início e o fim da pausa, ou deixe ambos vazios.');
         }
 
+        $horaEntrada = $periodos[0]['inicio'] ?? '';
+        $horaSaida = end($periodos)['fim'] ?? '';
+
+        if ($horaEntrada === '' || $horaSaida === '') {
+            redirect_with_message('danger', 'Defina pelo menos um período de turno válido.');
+        }
+
         try {
             $stmt = mysqli_prepare($conn, 'INSERT INTO turnos (nome, codigo, hora_entrada, hora_saida, inicio_pausa, fim_pausa, tolerancia_entrada_min, tolerancia_saida_min, horas_previstas, turno_noturno, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             mysqli_stmt_bind_param($stmt, 'ssssssiidii', $nome, $codigo, $horaEntrada, $horaSaida, $inicioPausa, $fimPausa, $toleranciaAtraso, $toleranciaSaida, $horasPrevistas, $turnoNoturno, $ativo);
             mysqli_stmt_execute($stmt);
+            $turnoId = mysqli_insert_id($conn);
             mysqli_stmt_close($stmt);
+
+            if ($temTabelaTurnoPeriodos) {
+                excluir_periodos_turno($conn, $turnoId);
+                salvar_periodos_turno($conn, $turnoId, $periodos, $toleranciaAtraso, $toleranciaSaida, $horasPrevistas);
+            }
 
             redirect_with_message('success', 'Turno criado com sucesso.');
         } catch (mysqli_sql_exception $e) {
@@ -93,8 +300,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int) ($_POST['id'] ?? 0);
         $nome = get_post_value('nome');
         $codigo = get_post_value('codigo') ?: null;
-        $horaEntrada = get_post_value('hora_entrada');
-        $horaSaida = get_post_value('hora_saida');
+        $periodos = limpar_periodos_post($_POST['periodo_inicio'] ?? [], $_POST['periodo_fim'] ?? []);
         $inicioPausa = nullable_time($_POST['inicio_pausa'] ?? '');
         $fimPausa = nullable_time($_POST['fim_pausa'] ?? '');
         $toleranciaAtraso = (int) ($_POST['tolerancia_entrada_min'] ?? 0);
@@ -103,12 +309,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $turnoNoturno = isset($_POST['turno_noturno']) ? 1 : 0;
         $ativo = isset($_POST['ativo']) ? 1 : 0;
 
-        if ($id <= 0 || $nome === '' || $horaEntrada === '' || $horaSaida === '') {
+        if ($id <= 0 || $nome === '') {
             redirect_with_message('danger', 'Preencha os campos obrigatórios.');
+        }
+
+        if (!validar_periodos($periodos, $erro)) {
+            redirect_with_message('danger', $erro);
         }
 
         if (($inicioPausa === null && $fimPausa !== null) || ($inicioPausa !== null && $fimPausa === null)) {
             redirect_with_message('danger', 'Preencha o início e o fim da pausa, ou deixe ambos vazios.');
+        }
+
+        $horaEntrada = $periodos[0]['inicio'] ?? '';
+        $horaSaida = end($periodos)['fim'] ?? '';
+
+        if ($horaEntrada === '' || $horaSaida === '') {
+            redirect_with_message('danger', 'Defina pelo menos um período de turno válido.');
         }
 
         try {
@@ -116,6 +333,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_bind_param($stmt, 'ssssssiidiii', $nome, $codigo, $horaEntrada, $horaSaida, $inicioPausa, $fimPausa, $toleranciaAtraso, $toleranciaSaida, $horasPrevistas, $turnoNoturno, $ativo, $id);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
+
+            if ($temTabelaTurnoPeriodos) {
+                excluir_periodos_turno($conn, $id);
+                salvar_periodos_turno($conn, $id, $periodos, $toleranciaAtraso, $toleranciaSaida, $horasPrevistas);
+            }
 
             redirect_with_message('success', 'Turno atualizado com sucesso.');
         } catch (mysqli_sql_exception $e) {
@@ -155,7 +377,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'associar') {
         if (!$temTabelaFuncionarios || !$temFuncionarioHorario) {
-            redirect_with_message('danger', 'Execute a migration antes de associar turnos a funcionários.');
+            redirect_with_message('danger', 'Execute a migração antes de associar turnos a funcionários.');
         }
 
         $turnoId = (int) ($_POST['turno_id'] ?? 0);
@@ -197,7 +419,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             redirect_with_message('success', 'Turno associado ao funcionário com sucesso.');
         } catch (mysqli_sql_exception $e) {
-            redirect_with_message('danger', 'Não foi possível associar o turno ao funcionário. Execute a migration se a coluna funcionario_id ainda não existir.');
+            redirect_with_message('danger', 'Não foi possível associar o turno ao funcionário. Execute a migração se a coluna funcionario_id ainda não existir.');
         }
     }
 
@@ -245,6 +467,13 @@ while ($row = mysqli_fetch_assoc($result)) {
     $turnos[] = $row;
 }
 mysqli_stmt_close($stmt);
+
+$periodosPorTurno = [];
+if ($temTabelaTurnoPeriodos && !empty($turnos)) {
+    foreach ($turnos as $turno) {
+        $periodosPorTurno[(int) $turno['id']] = obter_periodos_turno($conn, $turno['id']);
+    }
+}
 
 $associacoes = [];
 $associacaoNomeSelect = $temFuncionarioHorario ? 'f.nome AS funcionario_nome' : 'u.nome AS funcionario_nome';
@@ -309,7 +538,7 @@ $alertMessage = $_GET['message'] ?? '';
 
                     <?php if (!$temTabelaFuncionarios || !$temFuncionarioHorario): ?>
                         <div class="alert alert-warning" role="alert">
-                            Execute a migration <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> para associar turnos diretamente a funcionários.
+                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> para associar turnos diretamente a funcionários.
                         </div>
                     <?php endif; ?>
 
@@ -330,8 +559,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <tr>
                                             <th>Código</th>
                                             <th>Nome</th>
-                                            <th>Entrada</th>
-                                            <th>Saída</th>
+                                            <th>Períodos</th>
                                             <th>Pausa</th>
                                             <th>Tolerância</th>
                                             <th>Associações</th>
@@ -341,11 +569,11 @@ $alertMessage = $_GET['message'] ?? '';
                                     </thead>
                                     <tbody>
                                         <?php foreach ($turnos as $turno): ?>
+                                            <?php $periodos = $periodosPorTurno[(int) $turno['id']] ?? []; ?>
                                             <tr>
                                                 <td><?php echo e($turno['codigo'] ?: '-'); ?></td>
                                                 <td><?php echo e($turno['nome']); ?></td>
-                                                <td><?php echo e(substr($turno['hora_entrada'], 0, 5)); ?></td>
-                                                <td><?php echo e(substr($turno['hora_saida'], 0, 5)); ?></td>
+                                                <td><?php echo e(!empty($periodos) ? periodo_resumo($periodos) : sprintf('%s–%s', substr($turno['hora_entrada'], 0, 5), substr($turno['hora_saida'], 0, 5))); ?></td>
                                                 <td>
                                                     <?php if ($turno['inicio_pausa'] && $turno['fim_pausa']): ?>
                                                         <?php echo e(substr($turno['inicio_pausa'], 0, 5)); ?> - <?php echo e(substr($turno['fim_pausa'], 0, 5)); ?>
@@ -400,7 +628,7 @@ $alertMessage = $_GET['message'] ?? '';
                     </button>
                 </div>
                 <div class="modal-body">
-                    <?php include __DIR__ . '/turnos_form_campos.php'; ?>
+                    <?php $turno = []; $periodos = []; include __DIR__ . '/turnos_form_campos.php'; ?>
                 </div>
                 <div class="modal-footer border-0">
                     <button type="submit" class="btn btn-primary">Guardar</button>
@@ -411,6 +639,7 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
 
     <?php foreach ($turnos as $turno): ?>
+        <?php $periodos = obter_periodos_turno($conn, $turno['id']); ?>
         <div class="modal fade" id="modalEditarTurno<?php echo (int) $turno['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
@@ -423,57 +652,7 @@ $alertMessage = $_GET['message'] ?? '';
                         </button>
                     </div>
                     <div class="modal-body">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Nome *</label>
-                                <input type="text" name="nome" class="form-control" value="<?php echo e($turno['nome']); ?>" required>
-                                <div class="invalid-feedback">Indique o nome do turno.</div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Código</label>
-                                <input type="text" name="codigo" class="form-control" value="<?php echo e($turno['codigo']); ?>">
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Hora de entrada *</label>
-                                <input type="time" name="hora_entrada" class="form-control" value="<?php echo e(substr($turno['hora_entrada'], 0, 5)); ?>" required>
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Hora de saída *</label>
-                                <input type="time" name="hora_saida" class="form-control" value="<?php echo e(substr($turno['hora_saida'], 0, 5)); ?>" required>
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Início pausa</label>
-                                <input type="time" name="inicio_pausa" class="form-control" value="<?php echo e($turno['inicio_pausa'] ? substr($turno['inicio_pausa'], 0, 5) : ''); ?>">
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Fim pausa</label>
-                                <input type="time" name="fim_pausa" class="form-control" value="<?php echo e($turno['fim_pausa'] ? substr($turno['fim_pausa'], 0, 5) : ''); ?>">
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">Tolerância de atraso (min)</label>
-                                <input type="number" name="tolerancia_entrada_min" class="form-control" min="0" value="<?php echo (int) $turno['tolerancia_entrada_min']; ?>">
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">Tolerância de saída (min)</label>
-                                <input type="number" name="tolerancia_saida_min" class="form-control" min="0" value="<?php echo (int) $turno['tolerancia_saida_min']; ?>">
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">Horas previstas</label>
-                                <input type="number" step="0.25" name="horas_previstas" class="form-control" min="0" value="<?php echo e($turno['horas_previstas']); ?>">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="form-check mt-2">
-                                    <input class="form-check-input" type="checkbox" name="turno_noturno" id="editarNoturno<?php echo (int) $turno['id']; ?>" <?php echo (int) $turno['turno_noturno'] === 1 ? 'checked' : ''; ?>>
-                                    <label class="form-check-label" for="editarNoturno<?php echo (int) $turno['id']; ?>">Turno noturno</label>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="form-check mt-2">
-                                    <input class="form-check-input" type="checkbox" name="ativo" id="editarAtivo<?php echo (int) $turno['id']; ?>" <?php echo (int) $turno['ativo'] === 1 ? 'checked' : ''; ?>>
-                                    <label class="form-check-label" for="editarAtivo<?php echo (int) $turno['id']; ?>">Ativo</label>
-                                </div>
-                            </div>
-                        </div>
+                        <?php include __DIR__ . '/turnos_form_campos.php'; ?>
                     </div>
                     <div class="modal-footer border-0">
                         <button type="submit" class="btn btn-primary">Guardar alterações</button>
@@ -634,16 +813,38 @@ $alertMessage = $_GET['message'] ?? '';
                 }
             });
 
-            $('.needs-validation').on('submit', function (event) {
-                if (!this.checkValidity()) {
-                    event.preventDefault();
-                    event.stopPropagation();
+                function novaLinhaPeriodo(inicio = '', fim = '') {
+                    return '<tr>' +
+                        '<td><input type="time" name="periodo_inicio[]" class="form-control" value="' + inicio + '" required></td>' +
+                        '<td><input type="time" name="periodo_fim[]" class="form-control" value="' + fim + '" required></td>' +
+                        '<td><button type="button" class="btn btn-danger btn-sm remover-periodo">Remover</button></td>' +
+                        '</tr>';
                 }
 
-                $(this).addClass('was-validated');
+                $(document).on('click', '.turno-periodos-adicionar', function () {
+                    var tabela = $(this).closest('.card-body').find('table.turno-periodos-tabela tbody');
+                    tabela.append(novaLinhaPeriodo());
+                });
+
+                $(document).on('click', '.remover-periodo', function () {
+                    var tbody = $(this).closest('tbody');
+                    if (tbody.find('tr').length <= 1) {
+                        return;
+                    }
+                    $(this).closest('tr').remove();
+                });
+
+                $('.needs-validation').on('submit', function (event) {
+                    if (!this.checkValidity()) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+
+                    $(this).addClass('was-validated');
+                });
             });
-        });
     </script>
 </body>
 
 </html>
+

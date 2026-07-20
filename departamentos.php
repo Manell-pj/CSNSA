@@ -1,9 +1,10 @@
-<?php
+﻿<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 
 $utilizadorSessao = require_login($conn);
+ac_require_permission($conn, $utilizadorSessao, 'equipas.gerir');
 
 function e($value)
 {
@@ -49,6 +50,7 @@ $temEquipas = fe_table_exists($conn, 'equipas');
 $temSetorEquipa = $temEquipas && fe_column_exists($conn, 'equipas', 'setor_id');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    ac_require_permission($conn, $utilizadorSessao, 'equipas.gerir');
     $acao = $_POST['acao'] ?? '';
 
     if ($acao === 'criar') {
@@ -398,3 +400,5 @@ $alertMessage = $_GET['message'] ?? '';
 </body>
 
 </html>
+
+

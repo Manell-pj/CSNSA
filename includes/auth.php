@@ -4,6 +4,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+require_once __DIR__ . '/permissoes.php';
+
 function auth_user($conn)
 {
     $utilizadorId = (int) ($_SESSION['utilizador_id'] ?? 0);

@@ -4,10 +4,15 @@ require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 
 $utilizadorSessao = require_login($conn);
+ac_require_any($conn, $utilizadorSessao, ['ausencias.gerir', 'ferias.gerir', 'justificacoes.validar']);
 
 function e($value)
 {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
 }
 
 function redirect_with_message($type, $message)
@@ -45,17 +50,7 @@ function estado_badge($estado)
 
 function pode_aprovar($conn, $utilizadorId)
 {
-    $stmt = mysqli_prepare($conn, "SELECT COUNT(*) AS total
-        FROM utilizador_papeis up
-        INNER JOIN papeis p ON p.id = up.papel_id
-        WHERE up.utilizador_id = ? AND p.slug IN ('administrador', 'chefia', 'recursos-humanos')");
-    mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $row = mysqli_fetch_assoc($result);
-    mysqli_stmt_close($stmt);
-
-    return (int) ($row['total'] ?? 0) > 0;
+    return ac_can_any($conn, $utilizadorId, ['justificacoes.validar', 'ferias.gerir']);
 }
 
 function guardar_anexo_seguro($file)
@@ -87,7 +82,8 @@ function guardar_anexo_seguro($file)
         throw new RuntimeException('O conteúdo do ficheiro não corresponde a um formato permitido.');
     }
 
-    $diretorio = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'ausencias';
+    // store outside public uploads when possible
+    $diretorio = __DIR__ . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'ausencias';
 
     if (!is_dir($diretorio) && !mkdir($diretorio, 0755, true)) {
         throw new RuntimeException('Não foi possível preparar a pasta de anexos.');
@@ -100,7 +96,8 @@ function guardar_anexo_seguro($file)
         throw new RuntimeException('Não foi possível guardar o anexo.');
     }
 
-    return 'uploads/ausencias/' . $nomeSeguro;
+    // return stored filename (not public path). Use download_ausencia.php to serve.
+    return $nomeSeguro;
 }
 
 function garantir_tipos_ausencia($conn)
@@ -131,6 +128,92 @@ function garantir_tipos_ausencia($conn)
     }
 }
 
+function get_funcionario_id_from_utilizador($conn, $utilizadorId)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT id FROM funcionarios WHERE utilizador_id = ? LIMIT 1');
+    mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    $r = mysqli_fetch_assoc($res);
+    mysqli_stmt_close($stmt);
+    return $r['id'] ?? null;
+}
+
+function calcular_dias_ferias_por_escala($conn, $funcionario_id, $dataInicio, $dataFim)
+{
+    // retorna ['computado_por_escala' => bool, 'dias' => int, 'detalhe' => [...], 'conflitos' => [...]]
+    $out = ['computado_por_escala' => false, 'dias' => 0, 'detalhe' => [], 'conflitos' => []];
+    if (!$funcionario_id) return $out;
+
+    $dt = new DateTime($dataInicio);
+    $end = new DateTime($dataFim);
+
+    // buscar entradas de escala entre as datas
+    $stmt = mysqli_prepare($conn, 'SELECT data_escala, tipo_dia, turno_id FROM escala_mensal_dias WHERE funcionario_id = ? AND data_escala BETWEEN ? AND ?');
+    mysqli_stmt_bind_param($stmt, 'iss', $funcionario_id, $dataInicio, $dataFim);
+    mysqli_stmt_execute($stmt);
+    $rset = mysqli_stmt_get_result($stmt);
+    $escala = [];
+    while ($row = mysqli_fetch_assoc($rset)) {
+        $escala[$row['data_escala']] = $row;
+    }
+    mysqli_stmt_close($stmt);
+
+    if (empty($escala)) {
+        // sem regras de escala -> não inventar dias
+        return $out;
+    }
+
+    $out['computado_por_escala'] = true;
+
+    // detectar conflitos com outros pedidos/ferias
+    $stmtC = mysqli_prepare($conn, 'SELECT id, tipo_ausencia_id, estado, data_inicio, data_fim FROM pedidos_ausencia WHERE utilizador_id = (SELECT utilizador_id FROM funcionarios WHERE id = ? LIMIT 1) AND data_inicio <= ? AND data_fim >= ? AND estado IN ("pendente","aprovado")');
+    mysqli_stmt_bind_param($stmtC, 'iss', $funcionario_id, $dataFim, $dataInicio);
+    mysqli_stmt_execute($stmtC);
+    $rc = mysqli_stmt_get_result($stmtC);
+    while ($cr = mysqli_fetch_assoc($rc)) {
+        $out['conflitos'][] = ['tipo'=>'pedido', 'id'=>$cr['id'], 'estado'=>$cr['estado'], 'inicio'=>$cr['data_inicio'], 'fim'=>$cr['data_fim']];
+    }
+    mysqli_stmt_close($stmtC);
+
+    // contar dias em que escala indica trabalho (tipo_dia = 'trabalho' ou turno_id not null)
+    $curr = clone $dt;
+    while ($curr <= $end) {
+        $d = $curr->format('Y-m-d');
+        if (isset($escala[$d])) {
+            $row = $escala[$d];
+            $isWork = ($row['tipo_dia'] === 'trabalho' || !empty($row['turno_id']));
+            $out['detalhe'][$d] = ['tipo' => $row['tipo_dia'], 'turno_id' => $row['turno_id'], 'conta' => $isWork ? 1 : 0];
+            if ($isWork) $out['dias']++;
+        } else {
+            // sem entrada, não conta (não inventar)
+            $out['detalhe'][$d] = ['tipo' => 'sem_escala', 'turno_id' => null, 'conta' => 0];
+        }
+        $curr->modify('+1 day');
+    }
+
+    return $out;
+}
+
+function ensure_escala_hist_table($conn)
+{
+    $sql = "CREATE TABLE IF NOT EXISTS escala_mensal_dias_hist (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      escala_dia_id BIGINT UNSIGNED NOT NULL,
+      funcionario_id INT UNSIGNED DEFAULT NULL,
+      data_escala DATE NOT NULL,
+      turno_id INT UNSIGNED DEFAULT NULL,
+      tipo_dia ENUM('trabalho','folga','feriado','ferias','ausencia','descanso','formacao') NOT NULL DEFAULT 'trabalho',
+      minutos_previstos SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      observacoes VARCHAR(255) DEFAULT NULL,
+      alterado_por INT UNSIGNED DEFAULT NULL,
+      alterado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(id),
+      KEY(idx_hist_funcionario_data) (funcionario_id, data_escala)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+    mysqli_query($conn, $sql);
+}
+
 $utilizadorAutenticadoId = (int) ($_SESSION['utilizador_id'] ?? $_SESSION['user_id'] ?? 0);
 $utilizadorAutenticado = null;
 $temPermissaoAprovar = false;
@@ -153,11 +236,18 @@ garantir_tipos_ausencia($conn);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
 
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        http_response_code(403);
+        echo 'Token CSRF inválido.';
+        exit;
+    }
+
     if (!$utilizadorAutenticado || $utilizadorAutenticado['estado'] !== 'ativo') {
         redirect_with_message('danger', 'Precisa de estar autenticado com um utilizador ativo.');
     }
 
     if ($acao === 'pedir') {
+        ac_require_permission($conn, $utilizadorSessao, 'ausencias.gerir');
         $tipoAusenciaId = (int) ($_POST['tipo_ausencia_id'] ?? 0);
         $dataInicio = trim($_POST['data_inicio'] ?? '');
         $dataFim = trim($_POST['data_fim'] ?? '');
@@ -168,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($dataFim < $dataInicio) {
-            redirect_with_message('danger', 'A data fim não pode ser anterior a data início.');
+            redirect_with_message('danger', 'A data fim não pode ser anterior à data início.');
         }
 
         $stmt = mysqli_prepare($conn, 'SELECT id FROM tipos_ausencia WHERE id = ? AND ativo = 1 LIMIT 1');
@@ -188,14 +278,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dataFimObj = new DateTime($dataFim);
             $totalDias = (float) $dataInicioObj->diff($dataFimObj)->days + 1;
 
+            // Se for férias, tentar calcular dias reais usando a escala. Se não houver regras, manter cálculo por calendário.
+            $computedNote = '';
+            $calc = ['conflitos'=>[]];
+            $funcionarioId = get_funcionario_id_from_utilizador($conn, $utilizadorAutenticadoId);
+            $stmtT = mysqli_prepare($conn, 'SELECT slug FROM tipos_ausencia WHERE id = ? LIMIT 1');
+            mysqli_stmt_bind_param($stmtT, 'i', $tipoAusenciaId);
+            mysqli_stmt_execute($stmtT);
+            $rt = mysqli_stmt_get_result($stmtT);
+            $trow = mysqli_fetch_assoc($rt);
+            mysqli_stmt_close($stmtT);
+
+            if ($trow && $trow['slug'] === 'ferias') {
+                ac_require_permission($conn, $utilizadorSessao, 'ferias.gerir');
+                $calc = calcular_dias_ferias_por_escala($conn, $funcionarioId, $dataInicio, $dataFim);
+                if ($calc['computado_por_escala']) {
+                    $totalDias = $calc['dias'];
+                    $computedNote = ' (total calculado pela escala: ' . $calc['dias'] . ' dias)';
+                    if (!empty($calc['conflitos'])) {
+                        $computedNote .= ' [Conflitos detetados: ' . count($calc['conflitos']) . ']';
+                    }
+                } else {
+                    $computedNote = ' (sem regras de escala para este período; calculado por calendário)';
+                }
+            }
+
             $stmt = mysqli_prepare($conn, "INSERT INTO pedidos_ausencia
                 (utilizador_id, tipo_ausencia_id, data_inicio, data_fim, total_dias, motivo, ficheiro_justificativo, estado)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente')");
             mysqli_stmt_bind_param($stmt, 'iissdss', $utilizadorAutenticadoId, $tipoAusenciaId, $dataInicio, $dataFim, $totalDias, $motivo, $anexo);
             mysqli_stmt_execute($stmt);
+            $insertId = mysqli_insert_id($conn);
             mysqli_stmt_close($stmt);
 
-            redirect_with_message('success', 'Pedido registado com sucesso. Ficou pendente de aprovação.');
+            // Se foram detetados conflitos, guarda uma nota em observacoes_aprovacao para ajudar a aprovação.
+            if (!empty($calc['conflitos'])) {
+                $note = 'Conflitos detetados no pedido: ' . json_encode($calc['conflitos']);
+                $stmtN = mysqli_prepare($conn, 'UPDATE pedidos_ausencia SET observacoes_aprovacao = CONCAT(IFNULL(observacoes_aprovacao, ""), ?) WHERE id = ?');
+                mysqli_stmt_bind_param($stmtN, 'si', $note, $insertId);
+                mysqli_stmt_execute($stmtN);
+                mysqli_stmt_close($stmtN);
+            }
+
+            redirect_with_message('success', 'Pedido registado com sucesso. Ficou pendente de aprovação.' . $computedNote);
         } catch (RuntimeException $e) {
             redirect_with_message('danger', $e->getMessage());
         } catch (mysqli_sql_exception $e) {
@@ -204,6 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'aprovar' || $acao === 'recusar') {
+        ac_require_permission($conn, $utilizadorSessao, 'justificacoes.validar');
         if (!$temPermissaoAprovar) {
             redirect_with_message('danger', 'Não tem permissão para aprovar ou recusar pedidos.');
         }
@@ -228,7 +354,109 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_with_message('danger', 'O pedido já foi tratado ou não existe.');
         }
 
-        redirect_with_message('success', $acao === 'aprovar' ? 'Pedido aprovado com sucesso.' : 'Pedido recusado com sucesso.');
+        // Se aprovado e for férias, insere em ferias_ausencias e marca dias na escala (preservando histórico).
+        if ($novoEstado === 'aprovado') {
+            $stmtP = mysqli_prepare($conn, 'SELECT p.*, t.slug FROM pedidos_ausencia p INNER JOIN tipos_ausencia t ON t.id = p.tipo_ausencia_id WHERE p.id = ? LIMIT 1');
+            mysqli_stmt_bind_param($stmtP, 'i', $pedidoId);
+            mysqli_stmt_execute($stmtP);
+            $rp = mysqli_stmt_get_result($stmtP);
+            $pedidoRow = mysqli_fetch_assoc($rp);
+            mysqli_stmt_close($stmtP);
+
+            if ($pedidoRow && $pedidoRow['slug'] === 'ferias') {
+                // Obter funcionário.
+                $stmtF = mysqli_prepare($conn, 'SELECT id, utilizador_id FROM funcionarios WHERE utilizador_id = ? LIMIT 1');
+                mysqli_stmt_bind_param($stmtF, 'i', $pedidoRow['utilizador_id']);
+                mysqli_stmt_execute($stmtF);
+                $rf = mysqli_stmt_get_result($stmtF);
+                $funcRow = mysqli_fetch_assoc($rf);
+                mysqli_stmt_close($stmtF);
+                $funcionarioId = $funcRow['id'] ?? null;
+
+                $pedidoAusenciaId = (int) $pedidoRow['id'];
+                $funcionarioIdParam = $funcionarioId ? (int) $funcionarioId : null;
+                $pedidoUtilizadorId = (int) $pedidoRow['utilizador_id'];
+                $tipoAusenciaId = (int) $pedidoRow['tipo_ausencia_id'];
+                $dataInicioPedido = $pedidoRow['data_inicio'];
+                $dataFimPedido = $pedidoRow['data_fim'];
+                $horaInicioPedido = $pedidoRow['hora_inicio'] ?? null;
+                $horaFimPedido = $pedidoRow['hora_fim'] ?? null;
+                $diaCompleto = 1;
+                $minutosJustificados = null;
+                $estadoPedido = $pedidoRow['estado'];
+                $motivoPedido = $pedidoRow['motivo'] ?? null;
+                $ficheiroPedido = $pedidoRow['ficheiro_justificativo'] ?? null;
+                $aprovadoPor = (int) $utilizadorAutenticadoId;
+                $aprovadoAt = date('Y-m-d H:i:s');
+
+                $stmtIns = mysqli_prepare($conn, 'INSERT INTO ferias_ausencias
+                    (pedido_ausencia_id, funcionario_id, utilizador_id, tipo_ausencia_id, data_inicio, data_fim, hora_inicio, hora_fim, dia_completo, minutos_justificados, estado, motivo, ficheiro_justificativo, aprovado_por, aprovado_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                mysqli_stmt_bind_param(
+                    $stmtIns,
+                    'iiiissssiisssis',
+                    $pedidoAusenciaId,
+                    $funcionarioIdParam,
+                    $pedidoUtilizadorId,
+                    $tipoAusenciaId,
+                    $dataInicioPedido,
+                    $dataFimPedido,
+                    $horaInicioPedido,
+                    $horaFimPedido,
+                    $diaCompleto,
+                    $minutosJustificados,
+                    $estadoPedido,
+                    $motivoPedido,
+                    $ficheiroPedido,
+                    $aprovadoPor,
+                    $aprovadoAt
+                );
+                mysqli_stmt_execute($stmtIns);
+                mysqli_stmt_close($stmtIns);
+
+                // Garantir tabela de histórico existe.
+                ensure_escala_hist_table($conn);
+                // Atualizar escala_mensal_dias: para cada dia no período, se existir entrada, guardar histórico e marcar férias.
+                $cur = new DateTime($pedidoRow['data_inicio']);
+                $end = new DateTime($pedidoRow['data_fim']);
+                while ($cur <= $end) {
+                    $d = $cur->format('Y-m-d');
+                    $q = mysqli_prepare($conn, 'SELECT id, funcionario_id, tipo_dia, turno_id, minutos_previstos, observacoes FROM escala_mensal_dias WHERE funcionario_id = ? AND data_escala = ? LIMIT 1');
+                    mysqli_stmt_bind_param($q, 'is', $funcionarioId, $d);
+                    mysqli_stmt_execute($q);
+                    $resq = mysqli_stmt_get_result($q);
+                    $esc = mysqli_fetch_assoc($resq);
+                    mysqli_stmt_close($q);
+
+                    if ($esc) {
+                        $esc_id = (int) $esc['id'];
+                        $esc_func = (int) $esc['funcionario_id'];
+                        $esc_turno = isset($esc['turno_id']) ? (int) $esc['turno_id'] : null;
+                        $esc_tipo = (string) $esc['tipo_dia'];
+                        $esc_min = (int)$esc['minutos_previstos'];
+                        $esc_obs = $esc['observacoes'] ?? '';
+
+                        $stmtHist = mysqli_prepare($conn, 'INSERT INTO escala_mensal_dias_hist
+                            (escala_dia_id, funcionario_id, data_escala, turno_id, tipo_dia, minutos_previstos, observacoes, alterado_por)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                        mysqli_stmt_bind_param($stmtHist, 'iisisisi', $esc_id, $esc_func, $d, $esc_turno, $esc_tipo, $esc_min, $esc_obs, $aprovadoPor);
+                        mysqli_stmt_execute($stmtHist);
+                        mysqli_stmt_close($stmtHist);
+
+                        $note = 'Férias aprovadas (pedido ' . $pedidoId . ') por ' . mysqli_real_escape_string($conn, $utilizadorAutenticado['nome']) . ' em ' . date('Y-m-d H:i');
+                        $qup = mysqli_prepare($conn, 'UPDATE escala_mensal_dias SET tipo_dia = ?, observacoes = CONCAT(IFNULL(observacoes, ""), ?) WHERE id = ?');
+                        $tfer = 'ferias';
+                        mysqli_stmt_bind_param($qup, 'ssi', $tfer, $note, $esc_id);
+                        mysqli_stmt_execute($qup);
+                        mysqli_stmt_close($qup);
+                    }
+
+                    $cur->modify('+1 day');
+                }
+             }
+         }
+
+         redirect_with_message('success', $acao === 'aprovar' ? 'Pedido aprovado com sucesso.' : 'Pedido recusado com sucesso.');
     }
 }
 
@@ -275,6 +503,82 @@ if ($utilizadorAutenticado) {
     mysqli_stmt_close($stmt);
 }
 
+// Férias futuras (aprovadas) - área própria
+$feriasFuturas = [];
+$stmt = mysqli_prepare($conn, "SELECT pa.id, pa.utilizador_id, u.nome AS utilizador_nome, pa.data_inicio, pa.data_fim, pa.total_dias FROM pedidos_ausencia pa INNER JOIN utilizadores u ON u.id = pa.utilizador_id WHERE pa.estado = 'aprovado' AND pa.tipo_ausencia_id = (SELECT id FROM tipos_ausencia WHERE slug = 'ferias' LIMIT 1) AND pa.data_inicio > CURDATE() ORDER BY pa.data_inicio ASC");
+mysqli_stmt_execute($stmt);
+$resf = mysqli_stmt_get_result($stmt);
+while ($r = mysqli_fetch_assoc($resf)) { $feriasFuturas[] = $r; }
+mysqli_stmt_close($stmt);
+
+// Relatório de ausências: aceitar filtros via GET
+$relatorio = [];
+if (isset($_GET['relatorio']) && $temPermissaoAprovar) {
+    $start = $_GET['start'] ?? '';
+    $end = $_GET['end'] ?? '';
+    $year = isset($_GET['year']) ? (int) $_GET['year'] : null;
+    $month = isset($_GET['month']) ? (int) $_GET['month'] : null;
+    // If year+month provided, compute start/end
+    if ($year && $month) {
+        $start = sprintf('%04d-%02d-01', $year, $month);
+        $endDt = new DateTime($start);
+        $endDt->modify('last day of this month');
+        $end = $endDt->format('Y-m-d');
+    }
+
+    // validar datas
+    $startOk = DateTime::createFromFormat('Y-m-d', $start) !== false;
+    $endOk = DateTime::createFromFormat('Y-m-d', $end) !== false;
+    if ($startOk && $endOk && $start <= $end) {
+        // impedir períodos futuros em relatórios concluídos: se end > hoje e não for admin, recusar
+        $today = date('Y-m-d');
+        if ($end > $today && !$temPermissaoAprovar) {
+            $relatorio['erro'] = 'Não é permitido gerar relatórios com períodos futuros.';
+        } else {
+            // agregação usando resumo_diario_assiduidade (recomenda-se executar o calculador primeiro)
+            $sql = "SELECT r.funcionario_id, f.nome AS funcionario_nome, SUM(r.falta) AS dias_falta, SUM(r.minutos_previstos - r.minutos_trabalhados) AS minutos_falta, SUM(r.minutos_atraso) AS minutos_atraso, SUM(r.minutos_extra) AS minutos_extra FROM resumo_diario_assiduidade r INNER JOIN funcionarios f ON f.id = r.funcionario_id WHERE r.data BETWEEN ? AND ?";
+            $params = [$start, $end];
+            if (!empty($_GET['equipa_id'])) {
+                $sql .= ' AND r.equipa_id = ?'; $params[] = (int) $_GET['equipa_id'];
+            }
+            if (!empty($_GET['tipo_falta']) && in_array($_GET['tipo_falta'], ['ausente','ferias','baixa'])) {
+                // filter by estado
+                $sql .= ' AND r.estado = ?'; $params[] = $_GET['tipo_falta'];
+            }
+            $sql .= ' GROUP BY r.funcionario_id ORDER BY f.nome ASC';
+
+            $stmt = mysqli_prepare($conn, $sql);
+            // bind params dynamically
+            $types = str_repeat('s', count($params));
+            $refs = [];
+            foreach ($params as $k => $v) $refs[$k] = &$params[$k];
+            array_unshift($refs, $types);
+            call_user_func_array([$stmt, 'bind_param'], $refs);
+            mysqli_stmt_execute($stmt);
+            $rset = mysqli_stmt_get_result($stmt);
+            $rows = [];
+            while ($row = mysqli_fetch_assoc($rset)) $rows[] = $row;
+            mysqli_stmt_close($stmt);
+            $relatorio['rows'] = $rows;
+            $relatorio['start'] = $start; $relatorio['end'] = $end;
+                    // export CSV if requested
+                    if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+                        header('Content-Type: text/csv; charset=utf-8');
+                        header('Content-Disposition: attachment; filename="relatorio_ausencias_' . $start . '_to_' . $end . '.csv"');
+                        $out = fopen('php://output', 'w');
+                        fputcsv($out, ['Funcionário','Dias falta','Minutos falta','Minutos atraso','Minutos extra']);
+                        foreach ($rows as $r) {
+                            fputcsv($out, [$r['funcionario_nome'], $r['dias_falta'], $r['minutos_falta'], $r['minutos_atraso'], $r['minutos_extra']]);
+                        }
+                        fclose($out);
+                        exit;
+                    }
+        }
+    } else {
+        $relatorio['erro'] = 'Datas inválidas.';
+    }
+}
+
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
 ?>
@@ -308,6 +612,88 @@ $alertMessage = $_GET['message'] ?? '';
                                 <a href="ausencias.php">Ausências</a>
                             </li>
                         </ul>
+                    </div>
+                    <div class="card mt-3">
+                        <div class="card-header d-flex align-items-center">
+                            <h4 class="card-title">Férias futuras aprovadas</h4>
+                        </div>
+                        <div class="card-body">
+                            <?php if (empty($feriasFuturas)): ?>
+                                <div class="alert alert-info">Sem férias futuras aprovadas.</div>
+                            <?php else: ?>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead><tr><th>Colaborador</th><th>Início</th><th>Fim</th><th>Dias</th></tr></thead>
+                                        <tbody>
+                                        <?php foreach ($feriasFuturas as $f): ?>
+                                            <tr>
+                                                <td><?php echo e($f['utilizador_nome']); ?></td>
+                                                <td><?php echo e(date('d/m/Y', strtotime($f['data_inicio']))); ?></td>
+                                                <td><?php echo e(date('d/m/Y', strtotime($f['data_fim']))); ?></td>
+                                                <td><?php echo e($f['total_dias']); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h4 class="card-title">Relatório de ausências</h4>
+                        </div>
+                        <div class="card-body">
+                            <?php if (!empty($relatorio['erro'])): ?>
+                                <div class="alert alert-danger"><?php echo e($relatorio['erro']); ?></div>
+                            <?php endif; ?>
+                            <form method="get" class="row g-2 align-items-end mb-3">
+                                <input type="hidden" name="relatorio" value="1">
+                                <div class="col-md-2"><label class="form-label">Ano</label>
+                                    <select id="rel_year" name="year" class="form-select">
+                                        <?php $cy = (int) date('Y'); for ($y = $cy; $y >= $cy-5; $y--): ?>
+                                            <option value="<?php echo $y; ?>" <?php echo (isset($_GET['year']) && (int)$_GET['year'] === $y) ? 'selected' : ''; ?>><?php echo $y; ?></option>
+                                        <?php endfor; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-2"><label class="form-label">Mês</label>
+                                    <select id="rel_month" name="month" class="form-select">
+                                        <option value="0">-- Todos --</option>
+                                        <?php for ($m=1;$m<=12;$m++): ?>
+                                            <option value="<?php echo $m; ?>" <?php echo (isset($_GET['month']) && (int)$_GET['month'] === $m) ? 'selected' : ''; ?>><?php echo strftime('%B', mktime(0,0,0,$m,1)); ?></option>
+                                        <?php endfor; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-3"><label class="form-label">Ou intervalo (opcional)</label><div class="input-group"><input type="date" name="start" class="form-control" value="<?php echo e($_GET['start'] ?? ''); ?>"><input type="date" name="end" class="form-control" value="<?php echo e($_GET['end'] ?? ''); ?>"></div></div>
+                                <div class="col-md-2"><label class="form-label">Equipa</label>
+                                    <select name="equipa_id" class="form-select"><option value="">Todas</option></select>
+                                </div>
+                                <div class="col-md-2"><label class="form-label">Tipo</label>
+                                    <select name="tipo_falta" class="form-select"><option value="">Todos</option><option value="ausente">Ausente</option><option value="ferias">Férias</option><option value="baixa">Baixa</option></select>
+                                </div>
+                                <div class="col-md-2"><button class="btn btn-primary">Gerar</button></div>
+                            </form>
+
+                            <?php if (!empty($relatorio['rows'])): ?>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead><tr><th>Funcionário</th><th>Dias falta</th><th>Minutos falta</th><th>Minutos atraso</th><th>Minutos extra</th></tr></thead>
+                                        <tbody>
+                                        <?php foreach ($relatorio['rows'] as $r): ?>
+                                            <tr>
+                                                <td><?php echo e($r['funcionario_nome']); ?></td>
+                                                <td><?php echo e($r['dias_falta']); ?></td>
+                                                <td><?php echo e($r['minutos_falta']); ?></td>
+                                                <td><?php echo e($r['minutos_atraso']); ?></td>
+                                                <td><?php echo e($r['minutos_extra']); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
 
                     <?php if ($alertMessage !== ''): ?>
@@ -375,7 +761,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                 </td>
                                                 <td>
                                                     <?php if ($pedido['ficheiro_justificativo']): ?>
-                                                        <a href="<?php echo e($pedido['ficheiro_justificativo']); ?>" target="_blank">Ver</a>
+                                                        <a href="download_ausencia.php?id=<?php echo (int)$pedido['id']; ?>">Ver</a>
                                                     <?php else: ?>
                                                         -
                                                     <?php endif; ?>
@@ -413,6 +799,7 @@ $alertMessage = $_GET['message'] ?? '';
     <div class="modal fade" id="modalPedirAusencia" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg" role="document">
             <form method="post" enctype="multipart/form-data" class="modal-content needs-validation" novalidate>
+                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <input type="hidden" name="acao" value="pedir">
                 <div class="modal-header border-0">
                     <h5 class="modal-title">Novo pedido de ausência</h5>
@@ -470,6 +857,7 @@ $alertMessage = $_GET['message'] ?? '';
             <div class="modal fade" id="modalAprovarPedido<?php echo (int) $pedido['id']; ?>" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog" role="document">
                     <form method="post" class="modal-content">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                         <input type="hidden" name="acao" value="aprovar">
                         <input type="hidden" name="id" value="<?php echo (int) $pedido['id']; ?>">
                         <div class="modal-header border-0">
@@ -480,6 +868,9 @@ $alertMessage = $_GET['message'] ?? '';
                         </div>
                         <div class="modal-body">
                             <p>Confirmar aprovação do pedido de <strong><?php echo e($pedido['utilizador_nome']); ?></strong>?</p>
+                            <?php if (!empty($pedido['observacoes_aprovacao'])): ?>
+                                <div class="alert alert-info"><strong>Notas do pedido:</strong><br><pre style="white-space:pre-wrap;"><?php echo e($pedido['observacoes_aprovacao']); ?></pre></div>
+                            <?php endif; ?>
                             <label class="form-label">Observações</label>
                             <textarea name="observacoes_aprovacao" class="form-control" rows="3"></textarea>
                         </div>
@@ -494,6 +885,7 @@ $alertMessage = $_GET['message'] ?? '';
             <div class="modal fade" id="modalRecusarPedido<?php echo (int) $pedido['id']; ?>" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog" role="document">
                     <form method="post" class="modal-content">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                         <input type="hidden" name="acao" value="recusar">
                         <input type="hidden" name="id" value="<?php echo (int) $pedido['id']; ?>">
                         <div class="modal-header border-0">
@@ -546,8 +938,29 @@ $alertMessage = $_GET['message'] ?? '';
 
                 $(this).addClass('was-validated');
             });
+
+            // month selector: limit months to current month when year is current
+            function updateMonthLimits() {
+                var year = parseInt($('#rel_year').val(), 10);
+                var curYear = new Date().getFullYear();
+                var curMonth = new Date().getMonth() + 1;
+                if (year === curYear) {
+                    $('#rel_month option').each(function() {
+                        var m = parseInt($(this).val(), 10);
+                        if (m > curMonth) $(this).prop('disabled', true);
+                        else $(this).prop('disabled', false);
+                    });
+                } else {
+                    $('#rel_month option').prop('disabled', false);
+                }
+            }
+            $('#rel_year').on('change', updateMonthLimits);
+            updateMonthLimits();
         });
     </script>
 </body>
 
 </html>
+
+
+

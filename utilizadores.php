@@ -3,6 +3,7 @@ require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 
 $utilizadorSessao = require_login($conn);
+ac_require_permission($conn, $utilizadorSessao, 'utilizadores.gerir');
 
 function e($value)
 {
@@ -28,15 +29,81 @@ function nullable_int($value)
     return $value === '' ? null : (int) $value;
 }
 
+$permissoesDisponiveis = [];
+$resPermissoes = mysqli_query($conn, 'SELECT id, codigo, nome FROM permissoes ORDER BY codigo ASC');
+if ($resPermissoes) {
+    while ($row = mysqli_fetch_assoc($resPermissoes)) {
+        $permissoesDisponiveis[] = $row;
+    }
+}
+
+function permissoes_postadas()
+{
+    return array_values(array_unique(array_filter(array_map('intval', $_POST['permissoes'] ?? []))));
+}
+
+function guardar_permissoes_utilizador($conn, $utilizadorId, array $permissoesSelecionadas, array $permissoesDisponiveis)
+{
+    $stmt = mysqli_prepare($conn, 'DELETE FROM utilizador_permissoes WHERE utilizador_id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+
+    if (empty($permissoesDisponiveis)) {
+        return;
+    }
+
+    $stmt = mysqli_prepare($conn, 'INSERT IGNORE INTO utilizador_permissoes (utilizador_id, permissao_id, efeito) VALUES (?, ?, ?)');
+    foreach ($permissoesDisponiveis as $permissao) {
+        $permissaoId = (int) $permissao['id'];
+        $efeito = in_array($permissaoId, $permissoesSelecionadas, true) ? 'permitir' : 'negar';
+        mysqli_stmt_bind_param($stmt, 'iis', $utilizadorId, $permissaoId, $efeito);
+        mysqli_stmt_execute($stmt);
+    }
+    mysqli_stmt_close($stmt);
+}
+
+function permissoes_ids_por_codigo(array $permissoes)
+{
+    $ids = [];
+    foreach ($permissoes as $permissao) {
+        $ids[$permissao['codigo']] = (int) $permissao['id'];
+    }
+    return $ids;
+}
+
+function tem_permissao_id(array $permissoesSelecionadas, array $idsPorCodigo, $codigo)
+{
+    return isset($idsPorCodigo[$codigo]) && in_array($idsPorCodigo[$codigo], $permissoesSelecionadas, true);
+}
+
+$permissoesIdsPorCodigo = permissoes_ids_por_codigo($permissoesDisponiveis);
+
+function render_permissoes_checkboxes(array $permissoes, array $selecionadas = [])
+{
+    foreach ($permissoes as $permissao) {
+        $id = (int) $permissao['id'];
+        $checked = isset($selecionadas[$id]) ? 'checked' : '';
+        echo '<div class="col-md-6 mb-2">';
+        echo '<label class="form-check">';
+        echo '<input class="form-check-input" type="checkbox" name="permissoes[]" value="' . $id . '" ' . $checked . '>';
+        echo '<span class="form-check-label">' . htmlspecialchars(ac_permission_label($permissao['codigo'], $permissao['nome']), ENT_QUOTES, 'UTF-8') . '</span>';
+        echo '</label>';
+        echo '</div>';
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
+    ac_require_permission($conn, $utilizadorSessao, 'utilizadores.gerir');
 
     if ($acao === 'criar') {
         $nome = get_post_value('nome');
         $email = get_post_value('email');
         $password = $_POST['password'] ?? '';
         $estado = get_post_value('estado') ?: 'ativo';
-        $papelId = nullable_int($_POST['papel_id'] ?? '');
+        $permissoes = permissoes_postadas();
+        ac_require_permission($conn, $utilizadorSessao, 'permissoes.gerir');
 
         if ($nome === '' || $email === '' || $password === '') {
             redirect_with_message('danger', 'Preencha nome, email e palavra-passe.');
@@ -57,12 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $novoUtilizadorId = mysqli_insert_id($conn);
             mysqli_stmt_close($stmt);
 
-            if ($papelId !== null) {
-                $stmt = mysqli_prepare($conn, 'INSERT INTO utilizador_papeis (utilizador_id, papel_id) VALUES (?, ?)');
-                mysqli_stmt_bind_param($stmt, 'ii', $novoUtilizadorId, $papelId);
-                mysqli_stmt_execute($stmt);
-                mysqli_stmt_close($stmt);
-            }
+            guardar_permissoes_utilizador($conn, $novoUtilizadorId, $permissoes, $permissoesDisponiveis);
 
             mysqli_commit($conn);
             redirect_with_message('success', 'Utilizador criado com sucesso.');
@@ -78,7 +140,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = get_post_value('email');
         $password = $_POST['password'] ?? '';
         $estado = get_post_value('estado') ?: 'ativo';
-        $papelId = nullable_int($_POST['papel_id'] ?? '');
+        $permissoes = permissoes_postadas();
+        ac_require_permission($conn, $utilizadorSessao, 'permissoes.gerir');
 
         if ($id <= 0 || $nome === '' || $email === '') {
             redirect_with_message('danger', 'Preencha nome e email.');
@@ -86,6 +149,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             redirect_with_message('danger', 'Introduza um email válido.');
+        }
+
+        $mantemGestao = $estado === 'ativo'
+            && tem_permissao_id($permissoes, $permissoesIdsPorCodigo, 'utilizadores.gerir')
+            && tem_permissao_id($permissoes, $permissoesIdsPorCodigo, 'permissoes.gerir');
+
+        if (!$mantemGestao && ac_active_admin_count($conn, $id) === 0) {
+            redirect_with_message('danger', 'Não é possível deixar o sistema sem utilizador ativo com permissões de gestão.');
+        }
+
+        if ((int) $utilizadorSessao['id'] === $id
+            && (!$mantemGestao || !tem_permissao_id($permissoes, $permissoesIdsPorCodigo, 'permissoes.gerir'))
+            && ($_POST['confirmar_retirar_admin'] ?? '') !== '1') {
+            redirect_with_message('danger', 'Confirme explicitamente que pretende retirar as suas permissões administrativas.');
         }
 
         mysqli_begin_transaction($conn);
@@ -103,17 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
-            $stmt = mysqli_prepare($conn, 'DELETE FROM utilizador_papeis WHERE utilizador_id = ?');
-            mysqli_stmt_bind_param($stmt, 'i', $id);
-            mysqli_stmt_execute($stmt);
-            mysqli_stmt_close($stmt);
-
-            if ($papelId !== null) {
-                $stmt = mysqli_prepare($conn, 'INSERT INTO utilizador_papeis (utilizador_id, papel_id) VALUES (?, ?)');
-                mysqli_stmt_bind_param($stmt, 'ii', $id, $papelId);
-                mysqli_stmt_execute($stmt);
-                mysqli_stmt_close($stmt);
-            }
+            guardar_permissoes_utilizador($conn, $id, $permissoes, $permissoesDisponiveis);
 
             mysqli_commit($conn);
             redirect_with_message('success', 'Utilizador atualizado com sucesso.');
@@ -147,21 +214,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$papeis = [];
-$stmt = mysqli_prepare($conn, 'SELECT id, nome FROM papeis WHERE ativo = 1 ORDER BY nome ASC');
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-while ($row = mysqli_fetch_assoc($result)) {
-    $papeis[] = $row;
-}
-mysqli_stmt_close($stmt);
-
 $utilizadores = [];
 $sql = "SELECT u.id, u.nome, u.email, u.estado, u.ultimo_login_at,
-               p.id AS papel_id, p.nome AS papel_nome
+               COUNT(CASE WHEN upm.efeito = 'permitir' THEN 1 END) AS total_permissoes
         FROM utilizadores u
-        LEFT JOIN utilizador_papeis up ON up.utilizador_id = u.id
-        LEFT JOIN papeis p ON p.id = up.papel_id
+        LEFT JOIN utilizador_permissoes upm ON upm.utilizador_id = u.id
+        GROUP BY u.id, u.nome, u.email, u.estado, u.ultimo_login_at
         ORDER BY u.nome ASC";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_execute($stmt);
@@ -170,6 +228,44 @@ while ($row = mysqli_fetch_assoc($result)) {
     $utilizadores[] = $row;
 }
 mysqli_stmt_close($stmt);
+
+$permissoesPorUtilizador = [];
+$efeitosPorUtilizador = [];
+$contagemPermissoesDiretas = [];
+$totalPermissoesDisponiveis = count($permissoesDisponiveis);
+$res = mysqli_query($conn, 'SELECT utilizador_id, permissao_id, efeito FROM utilizador_permissoes');
+if ($res) {
+    while ($row = mysqli_fetch_assoc($res)) {
+        $uid = (int) $row['utilizador_id'];
+        $pid = (int) $row['permissao_id'];
+        $efeitosPorUtilizador[$uid][$pid] = $row['efeito'];
+        $contagemPermissoesDiretas[$uid][$pid] = true;
+        if ($row['efeito'] === 'permitir') {
+            $permissoesPorUtilizador[$uid][$pid] = true;
+        }
+    }
+}
+
+$res = mysqli_query($conn, 'SELECT up.utilizador_id, pp.permissao_id FROM utilizador_papeis up INNER JOIN papel_permissoes pp ON pp.papel_id = up.papel_id');
+if ($res) {
+    while ($row = mysqli_fetch_assoc($res)) {
+        $uid = (int) $row['utilizador_id'];
+        $pid = (int) $row['permissao_id'];
+
+        if (count($contagemPermissoesDiretas[$uid] ?? []) >= $totalPermissoesDisponiveis) {
+            continue;
+        }
+
+        if (($efeitosPorUtilizador[$uid][$pid] ?? '') === 'negar') {
+            unset($permissoesPorUtilizador[$uid][$pid]);
+            continue;
+        }
+
+        if (!isset($efeitosPorUtilizador[$uid][$pid])) {
+            $permissoesPorUtilizador[$uid][$pid] = true;
+        }
+    }
+}
 
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
@@ -224,7 +320,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <tr>
                                             <th>Nome</th>
                                             <th>Email</th>
-                                            <th>Papel</th>
+                                            <th>Permissões</th>
                                             <th>Último acesso</th>
                                             <th>Estado</th>
                                             <th style="width: 120px">Ações</th>
@@ -235,7 +331,7 @@ $alertMessage = $_GET['message'] ?? '';
                                             <tr>
                                                 <td><?php echo e($utilizador['nome']); ?></td>
                                                 <td><?php echo e($utilizador['email']); ?></td>
-                                                <td><?php echo e($utilizador['papel_nome'] ?: '-'); ?></td>
+                                                <td><?php echo (int) $utilizador['total_permissoes']; ?></td>
                                                 <td><?php echo $utilizador['ultimo_login_at'] ? e(date('d/m/Y H:i', strtotime($utilizador['ultimo_login_at']))) : '-'; ?></td>
                                                 <td>
                                                     <?php $badgeClass = $utilizador['estado'] === 'ativo' ? 'success' : ($utilizador['estado'] === 'suspenso' ? 'warning' : 'secondary'); ?>
@@ -268,7 +364,7 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
 
     <div class="modal fade" id="modalCriarUtilizador" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog" role="document">
+        <div class="modal-dialog modal-lg" role="document">
             <form method="post" class="modal-content needs-validation" novalidate>
                 <input type="hidden" name="acao" value="criar">
                 <div class="modal-header border-0">
@@ -291,13 +387,10 @@ $alertMessage = $_GET['message'] ?? '';
                         <input type="password" name="password" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Papel</label>
-                        <select name="papel_id" class="form-select">
-                            <option value="">Sem papel</option>
-                            <?php foreach ($papeis as $papel): ?>
-                                <option value="<?php echo (int) $papel['id']; ?>"><?php echo e($papel['nome']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label class="form-label">Permissões</label>
+                        <div class="row">
+                            <?php render_permissoes_checkboxes($permissoesDisponiveis); ?>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Estado</label>
@@ -318,7 +411,7 @@ $alertMessage = $_GET['message'] ?? '';
 
     <?php foreach ($utilizadores as $utilizador): ?>
         <div class="modal fade" id="modalEditarUtilizador<?php echo (int) $utilizador['id']; ?>" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog" role="document">
+            <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
                     <input type="hidden" name="acao" value="editar">
                     <input type="hidden" name="id" value="<?php echo (int) $utilizador['id']; ?>">
@@ -342,15 +435,10 @@ $alertMessage = $_GET['message'] ?? '';
                             <input type="password" name="password" class="form-control" placeholder="Manter atual se ficar vazio">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Papel</label>
-                            <select name="papel_id" class="form-select">
-                                <option value="">Sem papel</option>
-                                <?php foreach ($papeis as $papel): ?>
-                                    <option value="<?php echo (int) $papel['id']; ?>" <?php echo ((int) $utilizador['papel_id'] === (int) $papel['id']) ? 'selected' : ''; ?>>
-                                        <?php echo e($papel['nome']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <label class="form-label">Permissões</label>
+                            <div class="row">
+                                <?php render_permissoes_checkboxes($permissoesDisponiveis, $permissoesPorUtilizador[(int) $utilizador['id']] ?? []); ?>
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Estado</label>
@@ -360,6 +448,12 @@ $alertMessage = $_GET['message'] ?? '';
                                 <option value="inativo" <?php echo $utilizador['estado'] === 'inativo' ? 'selected' : ''; ?>>Inativo</option>
                             </select>
                         </div>
+                        <?php if ((int) $utilizador['id'] === (int) $utilizadorSessao['id']): ?>
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" name="confirmar_retirar_admin" value="1">
+                                <span class="form-check-label">Confirmo alterações que possam retirar o meu acesso administrativo</span>
+                            </label>
+                        <?php endif; ?>
                     </div>
                     <div class="modal-footer border-0">
                         <button type="submit" class="btn btn-primary">Guardar alterações</button>
@@ -425,3 +519,4 @@ $alertMessage = $_GET['message'] ?? '';
 </body>
 
 </html>
+

@@ -1,4 +1,4 @@
-<!-- Sidebar -->
+﻿<!-- Sidebar -->
 <div class="sidebar" data-background-color="dark">
     <div class="sidebar-logo">
         <!-- Logo Header -->
@@ -54,6 +54,12 @@
                         <p>Ausências</p>
                     </a>
                 </li>
+                <li class="nav-item <?php echo $paginaAtual === 'notificacoes.php' ? 'active' : ''; ?>">
+                    <a href="notificacoes.php">
+                        <i class="fas fa-bell"></i>
+                        <p>Notificações</p>
+                    </a>
+                </li>
                 <li class="nav-item <?php echo $paginaAtual === 'turnos.php' ? 'active' : ''; ?>">
                     <a href="turnos.php">
                         <i class="fas fa-business-time"></i>
@@ -78,15 +84,34 @@
                         <p>Relatórios de Horas</p>
                     </a>
                 </li>
-                <li class="nav-item <?php echo $paginaAtual === 'utilizadores.php' ? 'active' : ''; ?>">
-                    <a href="utilizadores.php">
-                        <i class="fas fa-user-lock"></i>
-                        <p>Utilizadores</p>
-                    </a>
-                </li>
+                <?php if (isset($conn, $utilizadorSessao) && ac_can($conn, (int) $utilizadorSessao['id'], 'utilizadores.gerir')): ?>
+                    <li class="nav-item <?php echo $paginaAtual === 'utilizadores.php' ? 'active' : ''; ?>">
+                        <a href="utilizadores.php">
+                            <i class="fas fa-user-lock"></i>
+                            <p>Utilizadores</p>
+                        </a>
+                    </li>
+                <?php endif; ?>
+                <?php if (isset($conn, $utilizadorSessao) && ac_can($conn, (int) $utilizadorSessao['id'], 'permissoes.gerir')): ?>
+                    <li class="nav-item <?php echo $paginaAtual === 'permissoes.php' ? 'active' : ''; ?>">
+                        <a href="permissoes.php">
+                            <i class="fas fa-key"></i>
+                            <p>Permissões</p>
+                        </a>
+                    </li>
+                <?php endif; ?>
+                <?php if (isset($conn, $utilizadorSessao) && ac_can($conn, (int) $utilizadorSessao['id'], 'logs.consultar')): ?>
+                    <li class="nav-item <?php echo $paginaAtual === 'logs.php' ? 'active' : ''; ?>">
+                        <a href="logs.php">
+                            <i class="fas fa-clipboard-list"></i>
+                            <p>Logs</p>
+                        </a>
+                    </li>
+                <?php endif; ?>
             </ul>
         </div>
     </div>
 </div>
 
 <!-- End Sidebar -->
+

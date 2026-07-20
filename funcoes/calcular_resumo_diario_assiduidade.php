@@ -411,7 +411,24 @@ function calcular_resumo_diario_assiduidade($conn, $data, $funcionarioId = null)
             $horasPrevistas = round($minutosPrevistos / 60, 2);
             $horasRealizadas = round($minutosTrabalhados / 60, 2);
             $falta = ($tipoDia === 'falta') || ($minutosPrevistos > 0 && !$temRegistos && !in_array($tipoDia, ['ferias', 'baixa', 'licenca_amamentacao'], true));
-            $minutosAusenciaJustificada = in_array($tipoDia, ['ferias', 'baixa', 'licenca_amamentacao'], true) ? $minutosPrevistos : 0;
+            // verificar pedidos de ausência aprovados que justifiquem falta neste dia (tipo 'falta-justificada' ou similar)
+            $minutosAusenciaJustificada = 0;
+            if (in_array($tipoDia, ['ferias', 'baixa', 'licenca_amamentacao'], true)) {
+                $minutosAusenciaJustificada = $minutosPrevistos;
+            } else {
+                // procurar pedidos_ausencia aprovados que cubram esta data e que sejam do tipo que exige justificação
+                $stmtJ = mysqli_prepare($conn, 'SELECT pa.id, ta.slug FROM pedidos_ausencia pa INNER JOIN tipos_ausencia ta ON ta.id = pa.tipo_ausencia_id WHERE pa.utilizador_id = ? AND pa.estado = "aprovado" AND pa.data_inicio <= ? AND pa.data_fim >= ? LIMIT 1');
+                $fidParam = $linha['utilizador_id'] === null ? 0 : (int) $linha['utilizador_id'];
+                $dataParam = $data;
+                mysqli_stmt_bind_param($stmtJ, 'iss', $fidParam, $dataParam, $dataParam);
+                mysqli_stmt_execute($stmtJ);
+                $rj = mysqli_stmt_get_result($stmtJ);
+                $pj = mysqli_fetch_assoc($rj);
+                mysqli_stmt_close($stmtJ);
+                if ($pj && $pj['slug'] === 'falta-justificada') {
+                    $minutosAusenciaJustificada = $minutosPrevistos;
+                }
+            }
             $dentroTolerancia = ($minutosAtraso === 0 && $minutosSaidaAntecipada === 0) ? 1 : 0;
             $estado = assiduidade_estado_resumo($tipoDia, $temRegistos, $minutosPrevistos, $minutosTrabalhados);
 

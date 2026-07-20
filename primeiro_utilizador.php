@@ -63,6 +63,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($stmt);
             }
 
+            if (ac_permissions_ready($conn)) {
+                $stmt = mysqli_prepare($conn, 'INSERT IGNORE INTO utilizador_permissoes (utilizador_id, permissao_id, efeito) SELECT ?, id, "permitir" FROM permissoes');
+                mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_close($stmt);
+            }
+
             mysqli_commit($conn);
 
             session_regenerate_id(true);

@@ -1,9 +1,10 @@
-<?php
+﻿<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/funcoes/escala_mensal_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
+ac_require_permission($conn, $utilizadorSessao, 'escalas.gerir');
 
 $contexto = escala_mensal_contexto_request();
 $ano = $contexto['ano'];
@@ -21,6 +22,16 @@ $equipas = $dadosEscala['equipas'];
 $turnos = $dadosEscala['turnos'];
 $funcionarios = $dadosEscala['funcionarios'];
 $escalaGuardada = $dadosEscala['escala_guardada'];
+$setores = $dadosEscala['setores'] ?? [];
+$turnosById = [];
+foreach ($turnos as $t) {
+    $turnosById[(int)$t['id']] = $t;
+}
+$minutosPorTurno = [];
+foreach ($turnos as $t) {
+    $minutos = escala_mensal_minutos_entre_horas($t['hora_entrada'], $t['hora_saida']);
+    $minutosPorTurno[(int)$t['id']] = $minutos;
+}
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
 ?>
@@ -66,7 +77,7 @@ $alertMessage = $_GET['message'] ?? '';
                     <?php if (!empty($missingTables)): ?>
                         <div class="alert alert-warning" role="alert">
                             Faltam tabelas de base: <strong><?php echo e(implode(', ', $missingTables)); ?></strong>.
-                            Execute a migration <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> antes de usar esta pagina.
+                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> antes de usar esta página.
                         </div>
                     <?php endif; ?>
 
@@ -75,7 +86,7 @@ $alertMessage = $_GET['message'] ?? '';
                             <h4 class="card-title mb-0">Filtros</h4>
                         </div>
                         <div class="card-body">
-                            <form method="get" class="row g-3 align-items-end">
+                            <form method="get" id="filtrosEscala" class="row g-3 align-items-end">
                                 <div class="col-md-2">
                                     <label class="form-label">Mes</label>
                                     <select name="mes" class="form-select">
@@ -102,7 +113,16 @@ $alertMessage = $_GET['message'] ?? '';
                                     </select>
                                 </div>
                                 <div class="col-md-2">
-                                    <button type="submit" class="btn btn-primary w-100">
+                                    <label class="form-label">Setor</label>
+                                    <select name="setor_id" class="form-select">
+                                        <option value="0">Todos os setores</option>
+                                        <?php foreach ($setores as $setor): ?>
+                                            <option value="<?php echo (int)$setor['id']; ?>" <?php echo (int)($setor['id'] ?? 0) === ($contexto['setor_id'] ?? 0) ? 'selected' : ''; ?>><?php echo e($setor['nome']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="submit" class="btn btn-primary w-100 d-none" id="btnFiltrar">
                                         <i class="fa fa-filter"></i>
                                         Filtrar
                                     </button>
@@ -116,19 +136,29 @@ $alertMessage = $_GET['message'] ?? '';
                         <input type="hidden" name="mes" value="<?php echo (int) $mes; ?>">
                         <input type="hidden" name="ano" value="<?php echo (int) $ano; ?>">
                         <input type="hidden" name="equipa_id" value="<?php echo (int) $equipaId; ?>">
+                        <input type="hidden" name="setor_id" value="<?php echo (int) ($contexto['setor_id'] ?? 0); ?>">
 
                         <div class="card">
                             <div class="card-header">
                                 <div class="d-flex align-items-center flex-wrap gap-2">
                                     <h4 class="card-title mb-0"><?php echo e(month_name($mes)); ?> <?php echo (int) $ano; ?></h4>
-                                    <div class="ms-auto d-flex align-items-center flex-wrap gap-2">
-                                        <span class="badge bg-warning text-dark">Folga trabalhada</span>
-                                        <span class="badge bg-info text-dark">Substituição</span>
-                                        <button type="submit" class="btn btn-success" <?php echo !empty($missingTables) ? 'disabled' : ''; ?>>
-                                            <i class="fa fa-save"></i>
-                                            Guardar escala
-                                        </button>
-                                    </div>
+                                            <div class="ms-auto d-flex align-items-center flex-wrap gap-2">
+                                                <span class="badge bg-warning text-dark">Folga trabalhada</span>
+                                                <span class="badge bg-info text-dark">Substituição</span>
+                                                <div class="ms-2">
+                                                    <?php foreach ($turnos as $t): ?>
+                                                        <span class="badge bg-light text-dark border me-1"><?php echo e($t['codigo'] ?: $t['nome']); ?>: <?php echo e($t['hora_entrada'] . '–' . $t['hora_saida']); ?></span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalBulkAssign" <?php echo !empty($missingTables) ? 'disabled' : ''; ?> title="Atribuir a selecionados">
+                                                    <i class="fa fa-tasks"></i>
+                                                    Atribuir selecionados
+                                                </button>
+                                                <button type="submit" class="btn btn-success" <?php echo !empty($missingTables) ? 'disabled' : ''; ?>>
+                                                    <i class="fa fa-save"></i>
+                                                    Guardar escala
+                                                </button>
+                                            </div>
                                 </div>
                             </div>
                             <div class="card-body">
@@ -141,6 +171,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <table class="table table-bordered table-sm align-middle escala-table">
                                             <thead>
                                                 <tr>
+                                                    <th style="width:40px"><input type="checkbox" id="select_all_rows"></th>
                                                     <th class="escala-sticky-col">Funcionário</th>
                                                     <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                         <?php $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia); ?>
@@ -149,11 +180,13 @@ $alertMessage = $_GET['message'] ?? '';
                                                             <small><?php echo e(weekday_short($data)); ?></small>
                                                         </th>
                                                     <?php endfor; ?>
+                                                    <th>Total horas</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <?php foreach ($funcionarios as $funcionario): ?>
                                                     <tr>
+                                                        <td><input type="checkbox" class="select_row" name="selected_funcionarios[]" value="<?php echo (int)$funcionario['id']; ?>"></td>
                                                         <th class="escala-sticky-col escala-funcionario">
                                                             <div class="fw-bold"><?php echo e($funcionario['nome']); ?></div>
                                                             <small class="text-muted">
@@ -163,6 +196,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                                 <?php endif; ?>
                                                             </small>
                                                         </th>
+                                                        <?php $totalMinutes = 0; ?>
                                                         <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                             <?php
                                                             $registo = $escalaGuardada[(int) $funcionario['id']][$dia] ?? [];
@@ -218,7 +252,13 @@ $alertMessage = $_GET['message'] ?? '';
 
                                                                 <input type="text" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][observacoes]" class="form-control form-control-sm mt-1" placeholder="Obs." value="<?php echo e($observacoes); ?>">
                                                             </td>
+                                                            <?php
+                                                            if ($turnoSelecionado > 0 && isset($minutosPorTurno[$turnoSelecionado])) {
+                                                                $totalMinutes += (int)$minutosPorTurno[$turnoSelecionado];
+                                                            }
+                                                            ?>
                                                         <?php endfor; ?>
+                                                        <td class="text-end fw-bold"><?php echo floor($totalMinutes / 60) . 'h ' . sprintf('%02d', $totalMinutes % 60) . 'm'; ?></td>
                                                     </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
@@ -236,6 +276,55 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
 
     <?php include 'includes/scripts.php'; ?>
+    <!-- Bulk assign modal -->
+    <div class="modal fade" id="modalBulkAssign" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <form method="post" class="modal-content">
+                <input type="hidden" name="acao" value="bulk_assign">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">Atribuição em massa</h5>
+                    <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p>Esta ação irá aplicar um turno/estado aos funcionários selecionados.</p>
+                    <div class="mb-3">
+                        <label class="form-label">Turno</label>
+                        <select name="turno_id" class="form-select">
+                            <option value="">Sem turno</option>
+                            <?php foreach ($turnos as $t): ?>
+                                <option value="<?php echo (int)$t['id']; ?>"><?php echo e($t['codigo'] ?: $t['nome']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo</label>
+                        <select name="tipo_dia" class="form-select">
+                            <?php foreach ($tiposDia as $tipo): ?>
+                                <option value="<?php echo e($tipo); ?>"><?php echo e(tipo_label($tipo)); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Dia início</label>
+                            <input type="number" name="dia_inicio" class="form-control" min="1" max="<?php echo $diasNoMes; ?>" value="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Dia fim</label>
+                            <input type="number" name="dia_fim" class="form-control" min="1" max="<?php echo $diasNoMes; ?>" value="<?php echo $diasNoMes; ?>">
+                        </div>
+                    </div>
+                    <input type="hidden" name="funcionario_ids" id="bulk_funcionario_ids" value="">
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="submit" class="btn btn-primary">Aplicar</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <style>
         .escala-wrapper {
             max-height: 72vh;
@@ -329,9 +418,41 @@ $alertMessage = $_GET['message'] ?? '';
             $('.escala-tipo, .escala-folga-trabalhada-check').on('change', function () {
                 atualizarCelula($(this).closest('.escala-cell'));
             });
+
+            // filtros reativos: atualizar URL sem botão
+            $('#filtrosEscala').find('select, input').on('change', function () {
+                var params = new URLSearchParams(window.location.search);
+                $('#filtrosEscala').find('select, input[name="ano"]').each(function () {
+                    var name = $(this).attr('name');
+                    var val = $(this).val();
+                    if (name) {
+                        params.set(name, val);
+                    }
+                });
+                var newUrl = window.location.pathname + '?' + params.toString();
+                window.location.href = newUrl;
+            });
+
+            // selecionar todas as linhas
+            $('#select_all_rows').on('change', function () {
+                var checked = $(this).is(':checked');
+                $('.select_row').prop('checked', checked);
+            });
+
+            // abrir modal bulk: preencher ids
+            $('#modalBulkAssign').on('show.bs.modal', function () {
+                var ids = [];
+                $('.select_row:checked').each(function () { ids.push($(this).val()); });
+                $('#bulk_funcionario_ids').val(ids.join(','));
+                if (ids.length === 0) {
+                    alert('Selecione pelo menos um funcionário antes de aplicar.');
+                    $('#modalBulkAssign').modal('hide');
+                }
+            });
         });
     </script>
 </body>
 
 </html>
+
 
