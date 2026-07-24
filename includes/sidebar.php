@@ -4,7 +4,7 @@
         <!-- Logo Header -->
         <div class="logo-header" data-background-color="dark">
             <a href="principal.php" class="logo">
-                <img src="assets/img/kaiadmin/logo_light.svg" alt="navbar brand" class="navbar-brand" height="20" />
+                <img src="<?php echo htmlspecialchars($appConfig['logo_light'] ?? 'assets/img/csnsa/logo-nsa-horizontal-light.png', ENT_QUOTES, 'UTF-8'); ?>" alt="CSNSA" class="navbar-brand" height="48" />
             </a>
             <div class="nav-toggle">
                 <button class="btn btn-toggle toggle-sidebar">

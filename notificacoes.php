@@ -1,7 +1,8 @@
-﻿<?php
+<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/notificacoes.php';
+require_once __DIR__ . '/funcoes/notificacoes_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'notificacoes.ver');
@@ -12,34 +13,6 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
-}
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-function notificacoes_redirect($type, $message)
-{
-    header('Location: notificacoes.php?' . http_build_query([
-        'type' => $type,
-        'message' => $message,
-    ]));
-    exit;
-}
-
-function nt_format_date_pt($date)
-{
-    return $date ? date('d/m/Y', strtotime($date)) : '-';
-}
-
-function nt_age_at_event($birthDate, $eventDate)
-{
-    if (!$birthDate || !$eventDate) {
-        return null;
-    }
-
-    return (new DateTimeImmutable($birthDate))->diff(new DateTimeImmutable($eventDate))->y;
 }
 
 $schemaReady = nt_schema_ready($conn);
@@ -330,4 +303,3 @@ if ($schemaReady && $canView) {
 </body>
 
 </html>
-

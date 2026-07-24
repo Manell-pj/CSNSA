@@ -3,14 +3,10 @@ require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 require_once __DIR__ . '/includes/relatorio_mensal.php';
+require_once __DIR__ . '/funcoes/relatorios_horas_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'relatorios.consultar');
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
 
 $anoAtual = (int) date('Y');
 $mesAtual = (int) date('n');

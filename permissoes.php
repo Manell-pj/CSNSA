@@ -1,6 +1,7 @@
-﻿<?php
+<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/funcoes/permissoes_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'permissoes.gerir');
@@ -11,17 +12,6 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
-}
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-function permissoes_redirect($type, $message)
-{
-    header('Location: permissoes.php?' . http_build_query(['type' => $type, 'message' => $message]));
-    exit;
 }
 
 if (!ac_permissions_ready($conn)) {
@@ -200,4 +190,3 @@ $alertMessage = $_GET['message'] ?? '';
 <?php include 'includes/scripts.php'; ?>
 </body>
 </html>
-

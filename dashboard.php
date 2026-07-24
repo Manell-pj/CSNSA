@@ -1,16 +1,12 @@
-﻿<?php
+<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 require_once __DIR__ . '/includes/notificacoes.php';
+require_once __DIR__ . '/funcoes/dashboard_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'ponto.consultar');
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
 
 $estadoFuncionarios = fe_carregar_funcionarios_estado($conn);
 $funcionarios = $estadoFuncionarios['funcionarios'];
@@ -25,14 +21,6 @@ if ($notificacoesReady && ac_can($conn, (int) $utilizadorSessao['id'], 'notifica
     $podeVerIdades = ac_can_any($conn, (int) $utilizadorSessao['id'], ['funcionarios.dados_sensiveis', 'funcionarios.ver_idade']);
 }
 
-function dashboard_idade_evento($birthDate, $eventDate)
-{
-    if (!$birthDate || !$eventDate) {
-        return null;
-    }
-
-    return (new DateTimeImmutable($birthDate))->diff(new DateTimeImmutable($eventDate))->y;
-}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -275,5 +263,4 @@ function dashboard_idade_evento($birthDate, $eventDate)
 </body>
 
 </html>
-
 

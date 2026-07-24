@@ -3,14 +3,10 @@ require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 require_once __DIR__ . '/includes/horas_trabalhadas.php';
+require_once __DIR__ . '/funcoes/banco_horas_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'banco_horas.consultar');
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
 
 $missingTables = [];
 foreach (['funcionarios', 'registos_ponto'] as $table) {
