@@ -2,18 +2,25 @@
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
+require_once __DIR__ . '/includes/notificacoes.php';
+require_once __DIR__ . '/funcoes/dashboard_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
+ac_require_permission($conn, $utilizadorSessao, 'ponto.consultar');
 
 $estadoFuncionarios = fe_carregar_funcionarios_estado($conn);
 $funcionarios = $estadoFuncionarios['funcionarios'];
 $totais = $estadoFuncionarios['totais'];
 $missingTables = $estadoFuncionarios['missing_tables'];
+$notificacoesReady = nt_schema_ready($conn);
+$notificacoesDashboard = [];
+$podeVerIdades = false;
+if ($notificacoesReady && ac_can($conn, (int) $utilizadorSessao['id'], 'notificacoes.ver')) {
+    nt_generate_notifications($conn);
+    $notificacoesDashboard = nt_list_notifications($conn, (int) $utilizadorSessao['id'], 6, false, false);
+    $podeVerIdades = ac_can_any($conn, (int) $utilizadorSessao['id'], ['funcionarios.dados_sensiveis', 'funcionarios.ver_idade']);
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -31,7 +38,7 @@ $missingTables = $estadoFuncionarios['missing_tables'];
             <div class="container">
                 <div class="page-inner">
                     <div class="page-header">
-                        <h3 class="fw-bold mb-3">Presencas de Funcionários</h3>
+                        <h3 class="fw-bold mb-3">Presenças de Funcionários</h3>
                         <ul class="breadcrumbs mb-3">
                             <li class="nav-home">
                                 <a href="dashboard.php">
@@ -50,7 +57,7 @@ $missingTables = $estadoFuncionarios['missing_tables'];
                     <?php if (!empty($missingTables)): ?>
                         <div class="alert alert-warning" role="alert">
                             Faltam tabelas de base: <strong><?php echo e(implode(', ', $missingTables)); ?></strong>.
-                            Execute a migration <code>database/2026_05_15_lar_idosos_assiduidade.sql</code>.
+                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code>.
                         </div>
                     <?php endif; ?>
 
@@ -123,7 +130,7 @@ $missingTables = $estadoFuncionarios['missing_tables'];
                                         </div>
                                         <div class="col col-stats ms-3 ms-sm-0">
                                             <div class="numbers">
-                                                <p class="card-category">Não a trabalhar</p>
+                                                <p class="card-category">Ausentes</p>
                                                 <h4 class="card-title"><?php echo (int) $totais['nao_trabalhar']; ?></h4>
                                             </div>
                                         </div>
@@ -132,6 +139,56 @@ $missingTables = $estadoFuncionarios['missing_tables'];
                             </div>
                         </div>
                     </div>
+
+                    <?php if ($notificacoesReady): ?>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex align-items-center">
+                                    <h4 class="card-title">Aniversários e diuturnidades</h4>
+                                    <a class="btn btn-outline-primary btn-sm ms-auto" href="notificacoes.php">
+                                        Ver todas
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <?php if (empty($notificacoesDashboard)): ?>
+                                    <p class="text-muted mb-0">Sem notificações ativas para os próximos períodos.</p>
+                                <?php else: ?>
+                                    <div class="row">
+                                        <?php foreach ($notificacoesDashboard as $item): ?>
+                                            <?php
+                                            $badge = $item['tipo'] === 'aniversario' ? 'primary' : 'warning';
+                                            $icon = $item['tipo'] === 'aniversario' ? 'fa-birthday-cake' : 'fa-award';
+                                            $age = $item['tipo'] === 'aniversario' && $podeVerIdades ? dashboard_idade_evento($item['data_nascimento'], $item['data_evento']) : null;
+                                            ?>
+                                            <div class="col-md-6 col-lg-4 mb-3">
+                                                <div class="border rounded p-3 h-100">
+                                                    <div class="d-flex align-items-start">
+                                                        <span class="avatar-title rounded-circle bg-<?php echo e($badge); ?> me-3">
+                                                            <i class="fas <?php echo e($icon); ?>"></i>
+                                                        </span>
+                                                        <div>
+                                                            <div class="fw-bold"><?php echo e($item['funcionario_nome']); ?></div>
+                                                            <div class="small text-muted">
+                                                                <?php echo e(date('d/m/Y', strtotime($item['data_evento']))); ?>
+                                                                <?php if ($age !== null): ?>
+                                                                    &middot; <?php echo (int) $age; ?> anos
+                                                                <?php endif; ?>
+                                                            </div>
+                                                            <div class="small mt-1"><?php echo e($item['mensagem']); ?></div>
+                                                            <?php if ($item['lida_at'] === null): ?>
+                                                                <span class="badge badge-primary mt-2">Não lida</span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="card">
                         <div class="card-header">
@@ -206,3 +263,4 @@ $missingTables = $estadoFuncionarios['missing_tables'];
 </body>
 
 </html>
+

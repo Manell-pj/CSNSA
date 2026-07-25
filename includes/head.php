@@ -1,8 +1,8 @@
 <head>
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>CSNSA - Gestor de Assiduidade</title>
+  <title><?php echo htmlspecialchars($appConfig['app_name'] ?? 'CSNSA - Gestor de Assiduidade', ENT_QUOTES, 'UTF-8'); ?></title>
   <meta content="width=device-width, initial-scale=1.0, shrink-to-fit=no" name="viewport" />
-  <link rel="icon" href="assets/img/kaiadmin/favicon.ico" type="image/x-icon" />
+  <link rel="icon" href="<?php echo htmlspecialchars($appConfig['favicon'] ?? 'assets/img/csnsa/favicon-nsa.png', ENT_QUOTES, 'UTF-8'); ?>" type="image/png" />
 
   <!-- Fonts and icons -->
   <script src="assets/js/plugin/webfont/webfont.min.js"></script>

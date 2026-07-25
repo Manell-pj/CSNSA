@@ -3,13 +3,10 @@ require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 require_once __DIR__ . '/includes/horas_trabalhadas.php';
+require_once __DIR__ . '/funcoes/banco_horas_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
+ac_require_permission($conn, $utilizadorSessao, 'banco_horas.consultar');
 
 $missingTables = [];
 foreach (['funcionarios', 'registos_ponto'] as $table) {
@@ -39,15 +36,23 @@ if ($periodo !== 'total') {
     [$dataInicio, $dataFim] = ht_periodo_mensal($ano, $mes);
 }
 
-$funcionarios = empty($missingTables) ? ht_carregar_horas_trabalhadas($conn, $dataInicio, $dataFim) : [];
-$totalMinutos = 0;
+$funcionarios = empty($missingTables) ? ht_carregar_banco_horas($conn, $dataInicio, $dataFim) : [];
+$totalPrevistos = 0;
+$totalTrabalhados = 0;
+$totalSaldo = 0;
+$totalAjustes = 0;
 $totalDias = 0;
 
 foreach ($funcionarios as $funcionario) {
-    $totalMinutos += (int) $funcionario['minutos_trabalhados'];
+    $totalPrevistos += (int) $funcionario['minutos_previstos'];
+    $totalTrabalhados += (int) $funcionario['minutos_trabalhados'];
+    $totalSaldo += (int) $funcionario['saldo_final'];
+    $totalAjustes += (int) $funcionario['minutos_ajustados'];
     $totalDias += (int) $funcionario['dias_trabalhados'];
 }
 ?>
+
+
 <!DOCTYPE html>
 <html lang="pt">
 <?php include 'includes/head.php'; ?>
@@ -95,8 +100,8 @@ foreach ($funcionarios as $funcionario) {
                             <div class="card card-stats card-round">
                                 <div class="card-body">
                                     <div class="numbers">
-                                        <p class="card-category">Horas trabalhadas</p>
-                                        <h4 class="card-title"><?php echo e(ht_formatar_minutos($totalMinutos)); ?></h4>
+                                        <p class="card-category">Horas previstas</p>
+                                        <h4 class="card-title"><?php echo e(ht_formatar_minutos($totalPrevistos)); ?></h4>
                                     </div>
                                 </div>
                             </div>
@@ -105,8 +110,20 @@ foreach ($funcionarios as $funcionario) {
                             <div class="card card-stats card-round">
                                 <div class="card-body">
                                     <div class="numbers">
-                                        <p class="card-category">Dias com trabalho</p>
-                                        <h4 class="card-title"><?php echo (int) $totalDias; ?></h4>
+                                        <p class="card-category">Horas trabalhadas</p>
+                                        <h4 class="card-title"><?php echo e(ht_formatar_minutos($totalTrabalhados)); ?></h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <div class="card card-stats card-round">
+                                <div class="card-body">
+                                    <div class="numbers">
+                                        <p class="card-category">Saldo final</p>
+                                        <h4 class="card-title"><?php echo e(ht_formatar_minutos($totalSaldo)); ?></h4>
+                                        <p class="card-category">Ajustes</p>
+                                        <h5 class="card-title"><?php echo e(ht_formatar_minutos($totalAjustes)); ?></h5>
                                     </div>
                                 </div>
                             </div>
@@ -178,8 +195,10 @@ foreach ($funcionarios as $funcionario) {
                                             <th>Funcionário</th>
                                             <th>N.º mec.</th>
                                             <th>Equipa</th>
-                                            <th>Dias trabalhados</th>
+                                            <th>Horas previstas</th>
                                             <th>Horas trabalhadas</th>
+                                            <th>Saldo final</th>
+                                            <th>Ajustes</th>
                                             <th>Primeira picagem</th>
                                             <th>Última picagem</th>
                                         </tr>
@@ -190,8 +209,10 @@ foreach ($funcionarios as $funcionario) {
                                                 <td><?php echo e($funcionario['nome']); ?></td>
                                                 <td><?php echo e($funcionario['numero_mecanografico'] ?: '-'); ?></td>
                                                 <td><?php echo e($funcionario['equipa_nome'] ?: '-'); ?></td>
-                                                <td><?php echo (int) $funcionario['dias_trabalhados']; ?></td>
+                                                <td><span class="badge badge-secondary"><?php echo e(ht_formatar_minutos($funcionario['minutos_previstos'])); ?></span></td>
                                                 <td><span class="badge badge-primary"><?php echo e(ht_formatar_minutos($funcionario['minutos_trabalhados'])); ?></span></td>
+                                                <td><span class="badge badge-<?php echo $funcionario['saldo_final'] >= 0 ? 'success' : 'danger'; ?>"><?php echo e(ht_formatar_minutos($funcionario['saldo_final'])); ?></span></td>
+                                                <td><span class="badge badge-info"><?php echo e(ht_formatar_minutos($funcionario['minutos_ajustados'])); ?></span></td>
                                                 <td><?php echo $funcionario['primeira_picagem'] ? e(date('d/m/Y H:i', strtotime($funcionario['primeira_picagem']))) : '-'; ?></td>
                                                 <td><?php echo $funcionario['ultima_picagem'] ? e(date('d/m/Y H:i', strtotime($funcionario['ultima_picagem']))) : '-'; ?></td>
                                             </tr>

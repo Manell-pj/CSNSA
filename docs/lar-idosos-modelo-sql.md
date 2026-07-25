@@ -1,27 +1,27 @@
-# Adaptacao SQL para lar de idosos
+# Adaptação SQL para lar de idosos
 
 Ficheiro principal: `database/2026_05_15_lar_idosos_assiduidade.sql`.
 
-## Diagnostico da estrutura atual
+## Diagnóstico da estrutura atual
 
-O projeto ja tem uma base funcional para assiduidade, mas a separacao correta passa a ser:
+O projeto já tem uma base funcional para assiduidade, mas a separação correta passa a ser:
 
-- `funcionarios` guarda as pessoas que trabalham na instituicao e que vao picar ponto.
-- `utilizadores` fica reservado apenas para quem acede ao site, como secretaria, direcao ou RH.
-- `equipas` organiza os funcionarios por funcao operacional.
-- `turnos` define horarios simples com uma entrada e uma saida.
-- `horarios_turno` associa turnos a funcionarios por periodo e dia da semana.
+- `funcionarios` guarda as pessoas que trabalham na instituição e que vão picar ponto.
+- `utilizadores` fica reservado apenas para quem acede ao site, como secretaria, direção ou RH.
+- `equipas` organiza os funcionários por função operacional.
+- `turnos` define horários simples com uma entrada e uma saída.
+- `horarios_turno` associa turnos a funcionários por período e dia da semana.
 - `registos_ponto` guarda as picagens, sempre ligadas a `funcionario_id`.
-- `tipos_ausencia` e `pedidos_ausencia` tratam ferias/faltas.
-- `banco_horas` guarda creditos/debitos.
+- `tipos_ausencia` e `pedidos_ausencia` tratam férias/faltas.
+- `banco_horas` guarda créditos/débitos.
 
 Para um lar de idosos faltavam duas camadas:
 
-- equipas operacionais, porque a secretaria precisa de filtrar por funcao real;
-- turnos com varios periodos no mesmo dia, porque ha horarios repartidos;
-- tabelas de apuramento, para fechar dias e meses sem recalcular tudo em cada relatorio.
+- equipas operacionais, porque a secretaria precisa de filtrar por função real;
+- turnos com vários períodos no mesmo dia, porque há horários repartidos;
+- tabelas de apuramento, para fechar dias e meses sem recalcular tudo em cada relatório.
 
-## Alteracoes propostas
+## Alterações propostas
 
 A migration cria sem apagar dados:
 
@@ -35,27 +35,27 @@ A migration cria sem apagar dados:
 - `relatorios_mensais`
 - `relatorio_mensal_linhas`
 
-Tambem acrescenta colunas a tabelas existentes:
+Também acrescenta colunas a tabelas existentes:
 
 - `utilizadores`: `equipa_id`, `funcionario_id`
 - `turnos`: `descricao`, `total_periodos`, `permite_multiplos_periodos`, `tolerancia_antes_min`, `tolerancia_depois_min`
 - `horarios_turno`: `funcionario_id`
-- `registos_ponto`: ligacao a funcionario, escala, periodo do turno e campos de tolerancia/desvio
-- `banco_horas`: ligacao a funcionario e resumo diario
+- `registos_ponto`: ligação a funcionário, escala, período do turno e campos de tolerância/desvio
+- `banco_horas`: ligação a funcionário e resumo diário
 
 ## Dados iniciais
 
-Sao inseridas equipas operacionais iniciais:
+São inseridas equipas operacionais iniciais:
 
-- Acao Direta
-- Servicos Gerais
-- Refeitorio/Copa
+- Ação Direta
+- Serviços Gerais
+- Refeitório/Copa
 - Cozinha
 - Lavandaria
-- Servicos Tecnicos e Administrativos
+- Serviços Técnicos e Administrativos
 - Motoristas
 
-E os turnos indicados pela instituicao, com tolerancia de 15 minutos antes e 15 minutos depois:
+E os turnos indicados pela instituição, com tolerância de 15 minutos antes e 15 minutos depois:
 
 - 00:00-08:00
 - 08:00-16:00
@@ -69,10 +69,22 @@ E os turnos indicados pela instituicao, com tolerancia de 15 minutos antes e 15 
 
 ## Compatibilidade PHP/MySQLi
 
-O codigo operacional deve consultar `funcionarios`, `equipas`, `turnos`, `pedidos_ausencia`, `registos_ponto` e `banco_horas`.
-`utilizadores` deve ser usado apenas para login e auditoria de quem fez alteracoes no site.
+O código operacional deve consultar `funcionarios`, `equipas`, `turnos`, `pedidos_ausencia`, `registos_ponto` e `banco_horas`.
+`utilizadores` deve ser usado apenas para login e auditoria de quem fez alterações no site.
 
-Para novos ecras, usar sempre `mysqli_prepare`, por exemplo:
+## Permissões de Acesso
+
+As permissões são atribuídas diretamente a cada utilizador. Ao criar ou editar uma conta em `utilizadores.php`, a aplicação apresenta a lista de permissões disponíveis e grava a configuração em `utilizador_permissoes`.
+
+Regras atuais:
+
+- `utilizador_permissoes.efeito = 'permitir'` dá acesso à funcionalidade.
+- `utilizador_permissoes.efeito = 'negar'` remove o acesso à funcionalidade.
+- `includes/permissoes.php` valida o acesso através de `ac_can()`, `ac_can_any()` e `ac_require_permission()`.
+- As tabelas `papeis`, `papel_permissoes` e `utilizador_papeis` podem existir por compatibilidade, mas não devem ser usadas para definir novos acessos.
+- Deve existir sempre pelo menos um utilizador ativo com `utilizadores.gerir` e `permissoes.gerir`, para evitar bloqueio administrativo.
+
+Para novos ecrãs, usar sempre `mysqli_prepare`, por exemplo:
 
 ```php
 $stmt = mysqli_prepare($conn, 'SELECT funcionario_id, nome, equipa_nome FROM vw_funcionarios_contexto WHERE estado = ? ORDER BY nome');
@@ -90,12 +102,12 @@ Views criadas para simplificar listagens:
 
 ## Fluxo recomendado
 
-1. A secretaria cria/atualiza funcionarios e equipas.
-2. O leitor biometrico identifica o funcionario por `codigo_biometrico` e cria `registos_ponto` com origem `dispositivo`.
-3. Os funcionarios picam apenas `entrada` e `saida`.
-4. A secretaria regista ou corrige pausas, faltas e ajustes manuais quando necessario.
-5. A escala mensal e criada em `escala_mensal` e preenchida em `escala_mensal_dias`.
-6. Um processo PHP de apuramento diario grava `resumo_diario_assiduidade`.
-7. Os relatorios mensais fechados sao guardados em `relatorios_mensais` e `relatorio_mensal_linhas`.
+1. A secretaria cria/atualiza funcionários e equipas.
+2. O leitor biométrico identifica o funcionário por `codigo_biometrico` e cria `registos_ponto` com origem `dispositivo`.
+3. Os funcionários picam apenas `entrada` e `saida`.
+4. A secretaria regista ou corrige pausas, faltas e ajustes manuais quando necessário.
+5. A escala mensal é criada em `escala_mensal` e preenchida em `escala_mensal_dias`.
+6. Um processo PHP de apuramento diário grava `resumo_diario_assiduidade`.
+7. Os relatórios mensais fechados são guardados em `relatorios_mensais` e `relatorio_mensal_linhas`.
 
-Esta abordagem evita apagar registos criticos: ausencias ficam canceladas/rejeitadas, registos de ponto ficam anulados/corrigidos, e relatorios fechados podem ser preservados como historico.
+Esta abordagem evita apagar registos críticos: ausências ficam canceladas/rejeitadas, registos de ponto ficam anulados/corrigidos, e relatórios fechados podem ser preservados como histórico.

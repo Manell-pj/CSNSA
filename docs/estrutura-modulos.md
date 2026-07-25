@@ -1,6 +1,6 @@
-# Estrutura de Modulos - Assiduidade e RH
+# Estrutura de Módulos - Assiduidade e RH
 
-Este projeto deve manter uma base simples em PHP procedural com MySQLi, usando os includes ja existentes:
+Este projeto deve manter uma base simples em PHP procedural com MySQLi, usando os includes já existentes:
 
 - `includes/head.php`
 - `includes/header.php`
@@ -9,7 +9,7 @@ Este projeto deve manter uma base simples em PHP procedural com MySQLi, usando o
 - `includes/scripts.php`
 - `config.php`
 
-A ideia e organizar a aplicacao por modulos funcionais, cada um com paginas proprias, ficheiros de acoes e consultas SQL simples.
+A ideia é organizar a aplicação por módulos funcionais, cada um com páginas próprias, ficheiros de ações e consultas SQL simples.
 
 ## Estrutura Recomendada
 
@@ -80,7 +80,6 @@ A ideia e organizar a aplicacao por modulos funcionais, cada um com paginas prop
 │   │   └── acoes.php
 │   └── permissoes/
 │       ├── utilizadores.php
-│       ├── papeis.php
 │       ├── permissoes.php
 │       └── acoes.php
 ├── uploads/
@@ -90,18 +89,18 @@ A ideia e organizar a aplicacao por modulos funcionais, cada um com paginas prop
     └── estrutura-modulos.md
 ```
 
-## Convencao de Cada Modulo
+## Convenção de Cada Módulo
 
-Cada modulo deve seguir uma organizacao previsivel:
+Cada módulo deve seguir uma organização previsível:
 
-- `index.php`: listagem principal do modulo.
-- `criar.php`: formulario de criacao, quando aplicavel.
-- `editar.php`: formulario de edicao, quando aplicavel.
-- `ver.php`: detalhe de um registo, quando aplicavel.
-- `acoes.php`: tratamento de `POST`, criacao, atualizacao, remocao, ativacao e outras operacoes.
-- ficheiros especificos: paginas proprias do dominio, como `turnos.php`, `ferias.php`, `sincronizar.php` ou `exportar.php`.
+- `index.php`: listagem principal do módulo.
+- `criar.php`: formulário de criação, quando aplicável.
+- `editar.php`: formulário de edição, quando aplicável.
+- `ver.php`: detalhe de um registo, quando aplicável.
+- `acoes.php`: tratamento de `POST`, criação, atualização, remoção, ativação e outras operações.
+- ficheiros específicos: páginas próprias do domínio, como `turnos.php`, `ferias.php`, `sincronizar.php` ou `exportar.php`.
 
-As paginas visuais devem incluir o layout base:
+As páginas visuais devem incluir o layout base:
 
 ```php
 include '../../config.php';
@@ -112,15 +111,15 @@ include '../../includes/footer.php';
 include '../../includes/scripts.php';
 ```
 
-O caminho pode variar conforme a localizacao do ficheiro.
+O caminho pode variar conforme a localização do ficheiro.
 
-## Modulos
+## Módulos
 
-### Dashboard e Relatorios
+### Dashboard e Relatórios
 
-Objetivo: dar uma visao rapida da assiduidade, atrasos, ausencias, horas extra e estado dos dispositivos.
+Objetivo: dar uma visão rápida da assiduidade, atrasos, ausências, horas extra e estado dos dispositivos.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/dashboard/index.php`
 - `modules/dashboard/widgets.php`
@@ -130,21 +129,21 @@ Paginas principais:
 - `modules/relatorios/ausencias.php`
 - `modules/relatorios/exportar.php`
 
-Indicadores uteis:
+Indicadores úteis:
 
 - colaboradores presentes hoje
 - colaboradores ausentes hoje
 - atrasos do dia
 - picagens incompletas
 - saldo total de banco de horas
-- pedidos de ferias pendentes
+- pedidos de férias pendentes
 - dispositivos offline
 
 ### Colaboradores e Utilizadores
 
 Objetivo: gerir dados pessoais, profissionais e acesso ao sistema.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/colaboradores/index.php`
 - `modules/colaboradores/criar.php`
@@ -157,7 +156,7 @@ Dados principais:
 - nome
 - email
 - telefone
-- numero mecanografico
+- número mecanográfico
 - departamento
 - cargo
 - tipo de contrato
@@ -165,7 +164,7 @@ Dados principais:
 - estado: ativo, suspenso, inativo
 - fotografia
 - utilizador associado
-- identificador biometrico ou cartao RFID
+- identificador biométrico ou cartão RFID
 
 Tabelas sugeridas:
 
@@ -175,9 +174,9 @@ Tabelas sugeridas:
 
 ### Departamentos
 
-Objetivo: organizar colaboradores por areas, equipas ou centros de custo.
+Objetivo: organizar colaboradores por áreas, equipas ou centros de custo.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/departamentos/index.php`
 - `modules/departamentos/criar.php`
@@ -187,19 +186,19 @@ Paginas principais:
 Dados principais:
 
 - nome
-- codigo
-- responsavel
+- código
+- responsável
 - estado
 
 Tabelas sugeridas:
 
 - `departamentos`
 
-### Horarios, Turnos e Escalas
+### Horários, Turnos e Escalas
 
-Objetivo: definir regras de trabalho e associar horarios aos colaboradores.
+Objetivo: definir regras de trabalho e associar horários aos colaboradores.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/horarios/index.php`
 - `modules/horarios/turnos.php`
@@ -209,13 +208,13 @@ Paginas principais:
 
 Funcionalidades:
 
-- horario fixo
-- horario flexivel
+- horário fixo
+- horário flexível
 - turnos rotativos
-- tolerancia de entrada e saida
-- pausa de almoco
+- tolerância de entrada e saída
+- pausa de almoço
 - horas previstas por dia
-- atribuicao por colaborador, departamento ou periodo
+- atribuição por colaborador, departamento ou período
 
 Tabelas sugeridas:
 
@@ -227,9 +226,9 @@ Tabelas sugeridas:
 
 ### Registos de Ponto
 
-Objetivo: guardar entradas, saidas, pausas e correcao manual de picagens.
+Objetivo: guardar entradas, saídas, pausas e correção manual de picagens.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/ponto/index.php`
 - `modules/ponto/registos.php`
@@ -240,13 +239,13 @@ Paginas principais:
 Origem dos registos:
 
 - manual
-- dispositivo biometrico
-- importacao CSV/Excel
+- dispositivo biométrico
+- importação CSV/Excel
 - API futura
 
 Estados importantes:
 
-- valido
+- válido
 - pendente
 - corrigido
 - rejeitado
@@ -258,11 +257,11 @@ Tabelas sugeridas:
 - `registos_ponto_logs`
 - `correcoes_ponto`
 
-### Ferias, Faltas e Ausencias
+### Férias, Faltas e Ausências
 
-Objetivo: gerir pedidos, aprovacoes e justificacoes.
+Objetivo: gerir pedidos, aprovações e justificações.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/ausencias/index.php`
 - `modules/ausencias/ferias.php`
@@ -271,14 +270,14 @@ Paginas principais:
 - `modules/ausencias/aprovar.php`
 - `modules/ausencias/acoes.php`
 
-Tipos de ausencia:
+Tipos de ausência:
 
-- ferias
+- férias
 - falta justificada
 - falta injustificada
-- baixa medica
-- licenca
-- formacao
+- baixa médica
+- licença
+- formação
 - teletrabalho
 
 Estados:
@@ -296,9 +295,9 @@ Tabelas sugeridas:
 
 ### Banco de Horas
 
-Objetivo: controlar credito e debito de horas por colaborador.
+Objetivo: controlar crédito e débito de horas por colaborador.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/banco_horas/index.php`
 - `modules/banco_horas/movimentos.php`
@@ -307,22 +306,22 @@ Paginas principais:
 
 Tipos de movimento:
 
-- credito por hora extra
-- debito por saida antecipada
+- crédito por hora extra
+- débito por saída antecipada
 - ajuste manual
-- compensacao aprovada
-- regularizacao mensal
+- compensação aprovada
+- regularização mensal
 
 Tabelas sugeridas:
 
 - `banco_horas`
 - `banco_horas_movimentos`
 
-### Dispositivos Biometricos
+### Dispositivos Biométricos
 
-Objetivo: preparar a integracao com relogios de ponto, terminais biometricos, RFID ou reconhecimento facial.
+Objetivo: preparar a integração com relógios de ponto, terminais biométricos, RFID ou reconhecimento facial.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/dispositivos/index.php`
 - `modules/dispositivos/criar.php`
@@ -337,9 +336,9 @@ Dados principais:
 - modelo
 - ip
 - porta
-- localizacao
+- localização
 - estado
-- ultima sincronizacao
+- última sincronização
 
 Tabelas sugeridas:
 
@@ -349,29 +348,31 @@ Tabelas sugeridas:
 
 Notas:
 
-- Numa primeira fase, guardar apenas a configuracao e simular sincronizacoes.
-- Depois, criar importacao por CSV.
-- So numa fase posterior integrar SDK/API especifica do equipamento.
+- Numa primeira fase, guardar apenas a configuração e simular sincronizações.
+- Depois, criar importação por CSV.
+- Só numa fase posterior integrar SDK/API específica do equipamento.
 
-### Permissoes e Papeis
+### Permissões por Utilizador
 
-Objetivo: controlar o que cada utilizador pode ver e fazer.
+Objetivo: controlar diretamente o que cada utilizador pode ver e fazer, sem depender do nome de papéis como “Administrador”, “Chefia” ou “Recursos Humanos”.
 
-Paginas principais:
+Páginas principais:
 
 - `modules/permissoes/utilizadores.php`
-- `modules/permissoes/papeis.php`
 - `modules/permissoes/permissoes.php`
 - `modules/permissoes/acoes.php`
 
-Papeis iniciais:
+Modelo atual:
 
-- administrador
-- recursos humanos
-- chefia
-- colaborador
+- A criação e a edição de utilizadores apresentam uma lista de permissões individuais.
+- Cada permissão marcada é gravada em `utilizador_permissoes` com o efeito `permitir`.
+- Cada permissão não marcada é gravada em `utilizador_permissoes` com o efeito `negar`, para que o utilizador fique explicitamente configurado.
+- A função central `ac_can()` valida primeiro as permissões diretas do utilizador.
+- As tabelas de papéis podem continuar na base de dados apenas para compatibilidade com instalações antigas, mas já não devem ser usadas na interface principal.
+- O primeiro utilizador criado no sistema recebe todas as permissões diretas.
+- O sistema não deve permitir que todos os utilizadores ativos percam, ao mesmo tempo, as permissões `utilizadores.gerir` e `permissoes.gerir`.
 
-Permissoes sugeridas:
+Permissões sugeridas:
 
 - `dashboard.ver`
 - `colaboradores.ver`
@@ -392,23 +393,28 @@ Permissoes sugeridas:
 
 Tabelas sugeridas:
 
-- `papeis`
 - `permissoes`
+- `utilizador_permissoes`
+- `logs_sistema`
+
+Tabelas mantidas apenas por compatibilidade:
+
+- `papeis`
 - `papel_permissoes`
 - `utilizador_papeis`
 
-## Ordem Recomendada de Implementacao
+## Ordem Recomendada de Implementação
 
-1. Base do projeto: `config.php`, sessao, login e includes comuns.
-2. Permissoes e papeis simples.
+1. Base do projeto: `config.php`, sessão, login e includes comuns.
+2. Permissões diretas por utilizador.
 3. Departamentos.
 4. Colaboradores/utilizadores.
-5. Horarios e turnos.
+5. Horários e turnos.
 6. Registos de ponto manuais.
-7. Ferias, faltas e ausencias.
+7. Férias, faltas e ausências.
 8. Banco de horas.
-9. Dashboard e relatorios.
-10. Dispositivos biometricos e importacoes.
+9. Dashboard e relatórios.
+10. Dispositivos biométricos e importações.
 
 ## Menu Lateral Sugerido
 
@@ -416,32 +422,32 @@ Tabelas sugeridas:
 Dashboard
 Colaboradores
 Departamentos
-Horarios e Turnos
+Horários e Turnos
 Registos de Ponto
-Ferias e Ausencias
+Férias e Ausências
 Banco de Horas
-Relatorios
+Relatórios
 Dispositivos
-Permissoes
-Configuracoes
+Permissões
+Configurações
 ```
 
 ## Regras Gerais Para PHP Procedural
 
-- Centralizar a ligacao MySQLi em `config.php`.
+- Centralizar a ligação MySQLi em `config.php`.
 - Usar `mysqli_prepare` nas queries com dados do utilizador.
-- Manter `acoes.php` apenas para processar formularios e redirecionar.
-- Evitar HTML dentro de funcoes grandes.
-- Criar funcoes pequenas em `includes/helpers.php`.
-- Validar permissoes antes de mostrar paginas sensiveis.
-- Guardar logs para operacoes importantes: correcao de ponto, aprovacoes, ajustes e sincronizacoes.
-- Nunca apagar registos criticos de assiduidade; usar estado `inativo`, `cancelado` ou `anulado`.
+- Manter `acoes.php` apenas para processar formulários e redirecionar.
+- Evitar HTML dentro de funções grandes.
+- Criar funções pequenas em `includes/helpers.php`.
+- Validar permissões antes de mostrar páginas sensíveis.
+- Guardar logs para operações importantes: correção de ponto, aprovações, ajustes e sincronizações.
+- Nunca apagar registos críticos de assiduidade; usar estado `inativo`, `cancelado` ou `anulado`.
 
-## Nomeclatura Recomendada
+## Nomenclatura Recomendada
 
-- Pastas em minusculas e sem acentos.
+- Pastas em minúsculas e sem acentos.
 - Tabelas no plural: `colaboradores`, `departamentos`, `registos_ponto`.
-- Chaves primarias como `id`.
+- Chaves primárias como `id`.
 - Chaves estrangeiras como `colaborador_id`, `departamento_id`, `utilizador_id`.
 - Datas como `data_criacao`, `data_atualizacao`, `criado_por`, `atualizado_por`.
 

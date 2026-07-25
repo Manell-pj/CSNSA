@@ -1,6 +1,12 @@
-<?php
+﻿<?php
+require_once __DIR__ . '/notificacoes.php';
+
 $nomeUtilizadorTopo = $utilizadorSessao['nome'] ?? ($_SESSION['utilizador_nome'] ?? 'Utilizador');
 $emailUtilizadorTopo = $utilizadorSessao['email'] ?? '';
+$notificacoesTopoTotal = 0;
+if (isset($conn) && isset($utilizadorSessao) && nt_schema_ready($conn) && ac_can($conn, (int) $utilizadorSessao['id'], 'notificacoes.ver')) {
+    $notificacoesTopoTotal = nt_count_unread($conn, (int) $utilizadorSessao['id']);
+}
 ?>
 <!-- Navbar Header -->
 <nav class="navbar navbar-header navbar-header-transparent navbar-expand-lg border-bottom">
@@ -10,6 +16,14 @@ $emailUtilizadorTopo = $utilizadorSessao['email'] ?? '';
         </div>
 
         <ul class="navbar-nav topbar-nav ms-md-auto align-items-center">
+            <li class="nav-item">
+                <a class="nav-link" href="notificacoes.php" title="Notificações">
+                    <i class="fas fa-bell"></i>
+                    <?php if ($notificacoesTopoTotal > 0): ?>
+                        <span class="notification"><?php echo (int) $notificacoesTopoTotal; ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
             <li class="nav-item topbar-user dropdown hidden-caret">
                 <a class="dropdown-toggle profile-pic" data-bs-toggle="dropdown" href="#" aria-expanded="false">
                     <div class="avatar-sm">
@@ -52,3 +66,4 @@ $emailUtilizadorTopo = $utilizadorSessao['email'] ?? '';
     </div>
 </nav>
 <!-- End Navbar -->
+

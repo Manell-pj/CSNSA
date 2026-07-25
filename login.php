@@ -1,13 +1,9 @@
 <?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/funcoes/login_funcoes.php';
 
 redirect_if_logged_in($conn);
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
 
 $erro = '';
 $email = trim($_POST['email'] ?? '');
@@ -61,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="wrapper wrapper-login">
         <div class="container container-login animated fadeIn">
             <div class="text-center mb-4">
-                <img src="assets/img/kaiadmin/logo_dark.svg" alt="CSNSA" height="34">
+                <img src="<?php echo e($appConfig['logo_vertical_dark'] ?? 'assets/img/csnsa/logo-nsa-vertical-dark.png'); ?>" alt="CSNSA" height="132">
             </div>
             <h3 class="text-center">Acesso ao sistema</h3>
 

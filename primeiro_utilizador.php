@@ -1,18 +1,7 @@
 <?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-function total_utilizadores($conn)
-{
-    $result = mysqli_query($conn, 'SELECT COUNT(*) AS total FROM utilizadores');
-    $row = $result ? mysqli_fetch_assoc($result) : ['total' => 0];
-    return (int) ($row['total'] ?? 0);
-}
+require_once __DIR__ . '/funcoes/primeiro_utilizador_funcoes.php';
 
 if (total_utilizadores($conn) > 0) {
     header('Location: login.php');
@@ -63,6 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($stmt);
             }
 
+            if (ac_permissions_ready($conn)) {
+                $stmt = mysqli_prepare($conn, 'INSERT IGNORE INTO utilizador_permissoes (utilizador_id, permissao_id, efeito) SELECT ?, id, "permitir" FROM permissoes');
+                mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_close($stmt);
+            }
+
             mysqli_commit($conn);
 
             session_regenerate_id(true);
@@ -86,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="wrapper wrapper-login">
         <div class="container container-login animated fadeIn">
             <div class="text-center mb-4">
-                <img src="assets/img/kaiadmin/logo_dark.svg" alt="CSNSA" height="34">
+                <img src="<?php echo e($appConfig['logo_vertical_dark'] ?? 'assets/img/csnsa/logo-nsa-vertical-dark.png'); ?>" alt="CSNSA" height="132">
             </div>
             <h3 class="text-center">Primeiro utilizador</h3>
 

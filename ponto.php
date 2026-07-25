@@ -2,46 +2,10 @@
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
+require_once __DIR__ . '/funcoes/ponto_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
-
-function e($value)
-{
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-function redirect_with_message($type, $message)
-{
-    header('Location: ponto.php?' . http_build_query([
-        'type' => $type,
-        'message' => $message,
-    ]));
-    exit;
-}
-
-function movimento_label($tipo)
-{
-    $labels = [
-        'entrada' => 'Entrada',
-        'saida' => 'Saída',
-        'inicio_pausa' => 'Início de pausa',
-        'fim_pausa' => 'Fim de pausa',
-    ];
-
-    return $labels[$tipo] ?? $tipo;
-}
-
-function movimento_badge($tipo)
-{
-    $classes = [
-        'entrada' => 'success',
-        'saida' => 'danger',
-        'inicio_pausa' => 'warning',
-        'fim_pausa' => 'info',
-    ];
-
-    return $classes[$tipo] ?? 'secondary';
-}
+ac_require_permission($conn, $utilizadorSessao, 'ponto.consultar');
 
 $missingTables = [];
 
@@ -53,29 +17,133 @@ foreach (['funcionarios', 'registos_ponto'] as $table) {
 
 $temFuncionarioRegisto = empty($missingTables) && fe_column_exists($conn, 'registos_ponto', 'funcionario_id');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'registar_ponto') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['registar_ponto','registar_por_codigo'], true)) {
+    ac_require_permission($conn, $utilizadorSessao, 'ponto.corrigir');
     if (!$temFuncionarioRegisto) {
-        redirect_with_message('danger', 'Execute a migration antes de registar ponto por funcionário.');
+        redirect_with_message('danger', 'Execute a migração antes de registar ponto por funcionário.');
     }
+    $acao = $_POST['acao'] ?? '';
 
-    $funcionarioId = (int) ($_POST['funcionario_id'] ?? 0);
-    $tipo = $_POST['tipo'] ?? '';
-    $dataHora = trim($_POST['data_hora'] ?? '');
-    $observacoes = trim($_POST['observacoes'] ?? '');
-    $tiposPermitidos = ['entrada', 'saida', 'inicio_pausa', 'fim_pausa'];
+    // suporte a registo por codigo de picagem
+    if ($acao === 'registar_por_codigo') {
+        $codigo = trim($_POST['codigo'] ?? '');
+        $tipo = $_POST['tipo'] ?? '';
+        $dataHora = trim($_POST['data_hora'] ?? '');
+        $observacoes = trim($_POST['observacoes'] ?? '');
 
-    if ($funcionarioId <= 0 || !in_array($tipo, $tiposPermitidos, true) || $dataHora === '') {
-        redirect_with_message('danger', 'Preencha funcionário, movimento e data/hora.');
+        if ($codigo === '' || $dataHora === '' || $tipo === '') {
+            redirect_with_message('danger', 'Código, movimento e data/hora são obrigatórios.');
+        }
+
+        $dt = DateTime::createFromFormat('Y-m-d\TH:i', $dataHora);
+        if (!$dt) {
+            redirect_with_message('danger', 'Data/hora inválida.');
+        }
+
+        $dataHoraSql = $dt->format('Y-m-d H:i:s');
+        $dataReferencia = $dt->format('Y-m-d');
+        $observacoes = $observacoes === '' ? null : $observacoes;
+
+        // Localizar funcionário por código (hash se disponível)
+        $stmt = mysqli_prepare($conn, 'SELECT id, codigo_picagem_hash, codigo_picagem_tentativas, codigo_picagem_bloqueado_ate FROM funcionarios WHERE estado = "ativo" AND codigo_picagem = ? LIMIT 1');
+        mysqli_stmt_bind_param($stmt, 's', $codigo);
+        mysqli_stmt_execute($stmt);
+        $res = mysqli_stmt_get_result($stmt);
+        $row = mysqli_fetch_assoc($res);
+        mysqli_stmt_close($stmt);
+
+        $funcionarioId = 0;
+        if ($row) {
+            if (!empty($row['codigo_picagem_bloqueado_ate']) && strtotime($row['codigo_picagem_bloqueado_ate']) > time()) {
+                redirect_with_message('danger', 'Código temporariamente bloqueado.');
+            }
+
+            // if hash exists, verify; else fallback to plaintext match
+            if (!empty($row['codigo_picagem_hash'])) {
+                if (password_verify($codigo, $row['codigo_picagem_hash'])) {
+                    $funcionarioId = (int)$row['id'];
+                    // reset attempts
+                    $s2 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = 0, codigo_picagem_bloqueado_ate = NULL WHERE id = ?');
+                    mysqli_stmt_bind_param($s2, 'i', $funcionarioId);
+                    mysqli_stmt_execute($s2);
+                    mysqli_stmt_close($s2);
+                } else {
+                    // increment attempts
+                    $fid = (int)$row['id'];
+                    $attempts = (int)$row['codigo_picagem_tentativas'] + 1;
+                    $lockedUntil = null;
+                    if ($attempts >= 5) {
+                        $lockedUntil = (new DateTime('+15 minutes'))->format('Y-m-d H:i:s');
+                    }
+                    $s3 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = ?, codigo_picagem_bloqueado_ate = ? WHERE id = ?');
+                    mysqli_stmt_bind_param($s3, 'isi', $attempts, $lockedUntil, $fid);
+                    mysqli_stmt_execute($s3);
+                    mysqli_stmt_close($s3);
+                    redirect_with_message('danger', 'Código inválido. Tentativa registada.');
+                }
+            } else {
+                // no hash - fallback: compare plaintext codigo_picagem field
+                $stmt2 = mysqli_prepare($conn, 'SELECT id FROM funcionarios WHERE codigo_picagem = ? AND estado = "ativo" LIMIT 1');
+                mysqli_stmt_bind_param($stmt2, 's', $codigo);
+                mysqli_stmt_execute($stmt2);
+                $r2 = mysqli_stmt_get_result($stmt2);
+                $f2 = mysqli_fetch_assoc($r2);
+                mysqli_stmt_close($stmt2);
+                if ($f2) {
+                    $funcionarioId = (int)$f2['id'];
+                } else {
+                    redirect_with_message('danger', 'Código inválido.');
+                }
+            }
+        } else {
+            $stmtHash = mysqli_prepare($conn, 'SELECT id, codigo_picagem_hash, codigo_picagem_bloqueado_ate FROM funcionarios WHERE estado = "ativo" AND codigo_picagem_hash IS NOT NULL');
+            mysqli_stmt_execute($stmtHash);
+            $resHash = mysqli_stmt_get_result($stmtHash);
+            while ($hashRow = mysqli_fetch_assoc($resHash)) {
+                if (!password_verify($codigo, $hashRow['codigo_picagem_hash'])) {
+                    continue;
+                }
+
+                if (!empty($hashRow['codigo_picagem_bloqueado_ate']) && strtotime($hashRow['codigo_picagem_bloqueado_ate']) > time()) {
+                    mysqli_stmt_close($stmtHash);
+                    redirect_with_message('danger', 'Código temporariamente bloqueado.');
+                }
+
+                $funcionarioId = (int) $hashRow['id'];
+                $s2 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = 0, codigo_picagem_bloqueado_ate = NULL WHERE id = ?');
+                mysqli_stmt_bind_param($s2, 'i', $funcionarioId);
+                mysqli_stmt_execute($s2);
+                mysqli_stmt_close($s2);
+                break;
+            }
+            mysqli_stmt_close($stmtHash);
+
+            if ($funcionarioId <= 0)
+            redirect_with_message('danger', 'Código inválido.');
+        }
+    } else {
+        $funcionarioId = (int) ($_POST['funcionario_id'] ?? 0);
+        $tipo = $_POST['tipo'] ?? '';
+        $dataHora = trim($_POST['data_hora'] ?? '');
+        $observacoes = trim($_POST['observacoes'] ?? '');
+        $dataHoraSql = null;
+        $dataReferencia = null;
+
+        $tiposPermitidos = ['entrada', 'saida', 'inicio_pausa', 'fim_pausa', 'entrada_segundo_turno', 'saida_segundo_turno'];
+
+        if ($funcionarioId <= 0 || !in_array($tipo, $tiposPermitidos, true) || $dataHora === '') {
+            redirect_with_message('danger', 'Preencha funcionário, movimento e data/hora.');
+        }
+
+        $dt = DateTime::createFromFormat('Y-m-d\TH:i', $dataHora);
+        if (!$dt) {
+            redirect_with_message('danger', 'Data/hora inválida.');
+        }
+
+        $dataHoraSql = $dt->format('Y-m-d H:i:s');
+        $dataReferencia = $dt->format('Y-m-d');
+        $observacoes = $observacoes === '' ? null : $observacoes;
     }
-
-    $dt = DateTime::createFromFormat('Y-m-d\TH:i', $dataHora);
-    if (!$dt) {
-        redirect_with_message('danger', 'Data/hora inválida.');
-    }
-
-    $dataHoraSql = $dt->format('Y-m-d H:i:s');
-    $dataReferencia = $dt->format('Y-m-d');
-    $observacoes = $observacoes === '' ? null : $observacoes;
 
     $stmt = mysqli_prepare($conn, "SELECT id FROM funcionarios WHERE id = ? AND estado = 'ativo' LIMIT 1");
     mysqli_stmt_bind_param($stmt, 'i', $funcionarioId);
@@ -89,21 +157,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'regista
     }
 
     $temDataReferencia = fe_column_exists($conn, 'registos_ponto', 'data_referencia');
+    // Basic validations: prevent consecutive same movement types and exit without entry
+    $stmtLast = mysqli_prepare($conn, 'SELECT tipo FROM registos_ponto WHERE funcionario_id = ? ORDER BY data_hora DESC, id DESC LIMIT 1');
+    mysqli_stmt_bind_param($stmtLast, 'i', $funcionarioId);
+    mysqli_stmt_execute($stmtLast);
+    $resLast = mysqli_stmt_get_result($stmtLast);
+    $last = mysqli_fetch_assoc($resLast);
+    mysqli_stmt_close($stmtLast);
+
+    if ($last) {
+        $lastTipo = $last['tipo'];
+        // disallow two consecutive identical movement types of entry/exit
+        $consecutiveDisallowed = [
+            ['entrada','entrada'], ['saida','saida'],
+            ['entrada_segundo_turno','entrada_segundo_turno'], ['saida_segundo_turno','saida_segundo_turno']
+        ];
+        foreach ($consecutiveDisallowed as $pair) {
+            if ($lastTipo === $pair[0] && $tipo === $pair[1]) {
+                redirect_with_message('danger', 'Movimento inválido: movimento igual ao anterior.');
+            }
+        }
+
+        // prevent exit without prior entry
+        $exitTypes = ['saida','saida_segundo_turno'];
+        $entryTypes = ['entrada','entrada_segundo_turno'];
+        if (in_array($tipo, $exitTypes, true) && !in_array($lastTipo, $entryTypes, true)) {
+            redirect_with_message('danger', 'Saída inválida: não existe entrada anterior registada.');
+        }
+    } else {
+        // no previous record; prevent exit as first movement
+        if (in_array($tipo, ['saida','saida_segundo_turno'], true)) {
+            redirect_with_message('danger', 'Saída inválida: não existe entrada anterior registada.');
+        }
+    }
+
+    // insert record and preserve format; origem: dispositivo when via codigo, else manual
+    $origem = ($acao === 'registar_por_codigo') ? 'dispositivo' : 'manual';
+    $registoManual = ($acao === 'registar_por_codigo') ? 0 : 1;
 
     if ($temDataReferencia) {
         $stmt = mysqli_prepare($conn, "INSERT INTO registos_ponto
-            (funcionario_id, tipo, data_hora, data_referencia, origem, estado, observacoes)
-            VALUES (?, ?, ?, ?, 'manual', 'valido', ?)");
-        mysqli_stmt_bind_param($stmt, 'issss', $funcionarioId, $tipo, $dataHoraSql, $dataReferencia, $observacoes);
+            (funcionario_id, tipo, data_hora, data_referencia, origem, estado, observacoes, registo_manual)
+            VALUES (?, ?, ?, ?, ?, 'valido', ?, ?)");
+        mysqli_stmt_bind_param($stmt, 'isssssi', $funcionarioId, $tipo, $dataHoraSql, $dataReferencia, $origem, $observacoes, $registoManual);
     } else {
         $stmt = mysqli_prepare($conn, "INSERT INTO registos_ponto
-            (funcionario_id, tipo, data_hora, origem, estado, observacoes)
-            VALUES (?, ?, ?, 'manual', 'valido', ?)");
-        mysqli_stmt_bind_param($stmt, 'isss', $funcionarioId, $tipo, $dataHoraSql, $observacoes);
+            (funcionario_id, tipo, data_hora, origem, estado, observacoes, registo_manual)
+            VALUES (?, ?, ?, ?, 'valido', ?, ?)");
+        mysqli_stmt_bind_param($stmt, 'issssi', $funcionarioId, $tipo, $dataHoraSql, $origem, $observacoes, $registoManual);
     }
 
     mysqli_stmt_execute($stmt);
+    $insertId = mysqli_insert_id($conn);
     mysqli_stmt_close($stmt);
+
+    // write audit log
+    if (fe_table_exists($conn, 'registos_ponto_logs')) {
+        $old = null;
+        $new = json_encode(['id' => $insertId, 'funcionario_id' => $funcionarioId, 'tipo' => $tipo, 'data_hora' => $dataHoraSql]);
+        $l = mysqli_prepare($conn, 'INSERT INTO registos_ponto_logs (registo_ponto_id, operacao, dados_antigos, dados_novos, utilizador_id) VALUES (?, "insercao", NULL, ?, NULL)');
+        mysqli_stmt_bind_param($l, 'is', $insertId, $new);
+        mysqli_stmt_execute($l);
+        mysqli_stmt_close($l);
+    }
 
     redirect_with_message('success', movimento_label($tipo) . ' registada com sucesso.');
 }
@@ -183,7 +299,7 @@ $alertMessage = $_GET['message'] ?? '';
 
                     <?php if (!empty($missingTables) || !$temFuncionarioRegisto): ?>
                         <div class="alert alert-warning" role="alert">
-                            Execute a migration <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> para ativar registos por funcionário.
+                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> para ativar registos por funcionário.
                         </div>
                     <?php endif; ?>
 
@@ -321,3 +437,5 @@ $alertMessage = $_GET['message'] ?? '';
 </body>
 
 </html>
+
+

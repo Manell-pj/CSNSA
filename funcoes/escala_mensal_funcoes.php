@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 function escala_mensal_e($value)
 {
@@ -118,6 +118,7 @@ function escala_mensal_contexto_request()
     $ano = (int) ($_REQUEST['ano'] ?? $anoAtual);
     $mes = (int) ($_REQUEST['mes'] ?? $mesAtual);
     $equipaId = (int) ($_REQUEST['equipa_id'] ?? 0);
+    $setorId = (int) ($_REQUEST['setor_id'] ?? 0);
 
     if ($ano < 2000 || $ano > 2100) {
         $ano = $anoAtual;
@@ -130,7 +131,7 @@ function escala_mensal_contexto_request()
     return [
         'ano' => $ano,
         'mes' => $mes,
-        'setor_id' => 0,
+        'setor_id' => $setorId,
         'equipa_id' => $equipaId,
         'dias_no_mes' => cal_days_in_month(CAL_GREGORIAN, $mes, $ano),
     ];
@@ -142,6 +143,7 @@ function escala_mensal_base_params($contexto)
         'ano' => $contexto['ano'],
         'mes' => $contexto['mes'],
         'equipa_id' => $contexto['equipa_id'],
+        'setor_id' => $contexto['setor_id'] ?? 0,
     ];
 }
 
@@ -161,54 +163,128 @@ function escala_mensal_tabelas_em_falta($conn)
 
 function escala_mensal_processar_post($conn, $contexto, $missingTables)
 {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || ($_POST['acao'] ?? '') !== 'guardar') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         return;
     }
+
+    $acaoPost = $_POST['acao'] ?? '';
 
     $baseParams = escala_mensal_base_params($contexto);
 
     if (!empty($missingTables)) {
-        escala_mensal_redirect('danger', 'Execute primeiro a migration SQL da adaptacao para lar de idosos.', $baseParams);
+        escala_mensal_redirect('danger', 'Execute primeiro a migration SQL da adaptação para lar de idosos.', $baseParams);
     }
 
-    $escala = $_POST['escala'] ?? [];
+    if ($acaoPost === 'guardar') {
+        $escala = $_POST['escala'] ?? [];
 
-    if (!is_array($escala)) {
-        escala_mensal_redirect('danger', 'Dados da escala inválidos.', $baseParams);
-    }
-
-    mysqli_begin_transaction($conn);
-
-    try {
-        $stmtFuncionario = mysqli_prepare($conn, 'SELECT id, utilizador_id, equipa_id FROM funcionarios WHERE id = ? AND estado = "ativo" LIMIT 1');
-        $stmtGuardar = mysqli_prepare($conn, "INSERT INTO escala_funcionarios
-            (funcionario_id, utilizador_id, setor_id, equipa_id, ano, mes, data_escala, dia, tipo_dia, turno_id, substitui_funcionario_id, folga_trabalhada, observacoes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                utilizador_id = VALUES(utilizador_id),
-                setor_id = VALUES(setor_id),
-                equipa_id = VALUES(equipa_id),
-                ano = VALUES(ano),
-                mes = VALUES(mes),
-                dia = VALUES(dia),
-                tipo_dia = VALUES(tipo_dia),
-                turno_id = VALUES(turno_id),
-                substitui_funcionario_id = VALUES(substitui_funcionario_id),
-                folga_trabalhada = VALUES(folga_trabalhada),
-                observacoes = VALUES(observacoes)");
-
-        foreach ($escala as $funcionarioId => $dias) {
-            escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar, $contexto, (int) $funcionarioId, $dias);
+        if (!is_array($escala)) {
+            escala_mensal_redirect('danger', 'Dados da escala inválidos.', $baseParams);
         }
 
-        mysqli_stmt_close($stmtFuncionario);
-        mysqli_stmt_close($stmtGuardar);
-        mysqli_commit($conn);
+        mysqli_begin_transaction($conn);
 
-        escala_mensal_redirect('success', 'Escala mensal guardada com sucesso.', $baseParams);
-    } catch (Throwable $e) {
-        mysqli_rollback($conn);
-        escala_mensal_redirect('danger', 'Não foi possível guardar a escala mensal.', $baseParams);
+        try {
+            $stmtFuncionario = mysqli_prepare($conn, 'SELECT id, utilizador_id, equipa_id FROM funcionarios WHERE id = ? AND estado = "ativo" LIMIT 1');
+            $stmtGuardar = mysqli_prepare($conn, "INSERT INTO escala_funcionarios
+                (funcionario_id, utilizador_id, setor_id, equipa_id, ano, mes, data_escala, dia, tipo_dia, turno_id, substitui_funcionario_id, folga_trabalhada, observacoes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    utilizador_id = VALUES(utilizador_id),
+                    setor_id = VALUES(setor_id),
+                    equipa_id = VALUES(equipa_id),
+                    ano = VALUES(ano),
+                    mes = VALUES(mes),
+                    dia = VALUES(dia),
+                    tipo_dia = VALUES(tipo_dia),
+                    turno_id = VALUES(turno_id),
+                    substitui_funcionario_id = VALUES(substitui_funcionario_id),
+                    folga_trabalhada = VALUES(folga_trabalhada),
+                    observacoes = VALUES(observacoes)");
+
+            foreach ($escala as $funcionarioId => $dias) {
+                escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar, $contexto, (int) $funcionarioId, $dias);
+            }
+
+            mysqli_stmt_close($stmtFuncionario);
+            mysqli_stmt_close($stmtGuardar);
+            mysqli_commit($conn);
+
+            escala_mensal_redirect('success', 'Escala mensal guardada com sucesso.', $baseParams);
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            escala_mensal_redirect('danger', 'Não foi possível guardar a escala mensal.', $baseParams);
+        }
+    }
+
+    if ($acaoPost === 'bulk_assign') {
+        $funcionarioIds = $_POST['funcionario_ids'] ?? [];
+        if (is_string($funcionarioIds) && $funcionarioIds !== '') {
+            $funcionarioIds = array_filter(array_map('intval', explode(',', $funcionarioIds)));
+        }
+        $dias = [];
+        $diaInicio = isset($_POST['dia_inicio']) ? (int)$_POST['dia_inicio'] : 1;
+        $diaFim = isset($_POST['dia_fim']) ? (int)$_POST['dia_fim'] : $contexto['dias_no_mes'];
+        $diaInicio = max(1, $diaInicio);
+        $diaFim = min($contexto['dias_no_mes'], $diaFim);
+        if ($diaInicio <= $diaFim) {
+            for ($d = $diaInicio; $d <= $diaFim; $d++) $dias[] = $d;
+        }
+        $turnoId = isset($_POST['turno_id']) && (int)$_POST['turno_id'] > 0 ? (int)$_POST['turno_id'] : null;
+        $tipoDia = $_POST['tipo_dia'] ?? 'turno';
+
+        if (!is_array($funcionarioIds) || empty($funcionarioIds) || !is_array($dias) || empty($dias)) {
+            escala_mensal_redirect('danger', 'Parâmetros inválidos para atribuição em massa.', $baseParams);
+        }
+
+        mysqli_begin_transaction($conn);
+        try {
+            $stmtFuncionario = mysqli_prepare($conn, 'SELECT id, utilizador_id, equipa_id FROM funcionarios WHERE id = ? AND estado = "ativo" LIMIT 1');
+            $stmtGuardar = mysqli_prepare($conn, "INSERT INTO escala_funcionarios
+                (funcionario_id, utilizador_id, setor_id, equipa_id, ano, mes, data_escala, dia, tipo_dia, turno_id, substitui_funcionario_id, folga_trabalhada, observacoes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    utilizador_id = VALUES(utilizador_id),
+                    setor_id = VALUES(setor_id),
+                    equipa_id = VALUES(equipa_id),
+                    ano = VALUES(ano),
+                    mes = VALUES(mes),
+                    dia = VALUES(dia),
+                    tipo_dia = VALUES(tipo_dia),
+                    turno_id = VALUES(turno_id),
+                    substitui_funcionario_id = VALUES(substitui_funcionario_id),
+                    folga_trabalhada = VALUES(folga_trabalhada),
+                    observacoes = VALUES(observacoes)");
+
+            foreach ($funcionarioIds as $fid) {
+                $fid = (int) $fid;
+                if ($fid <= 0) continue;
+                mysqli_stmt_bind_param($stmtFuncionario, 'i', $fid);
+                mysqli_stmt_execute($stmtFuncionario);
+                $res = mysqli_stmt_get_result($stmtFuncionario);
+                $func = mysqli_fetch_assoc($res);
+                if (!$func) continue;
+
+                foreach ($dias as $dia) {
+                    $dia = (int) $dia;
+                    if ($dia < 1 || $dia > $contexto['dias_no_mes']) continue;
+                    $dadosDia = [
+                        'tipo_dia' => $tipoDia,
+                        'turno_id' => $turnoId,
+                    ];
+                    escala_mensal_guardar_dia($stmtGuardar, $contexto, $fid, $func, $dia, $dadosDia);
+                }
+            }
+
+            mysqli_stmt_close($stmtFuncionario);
+            mysqli_stmt_close($stmtGuardar);
+            mysqli_commit($conn);
+
+            escala_mensal_redirect('success', 'Atribuição em massa aplicada com sucesso.', $baseParams);
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            escala_mensal_redirect('danger', 'Falha na atribuição em massa.', $baseParams);
+        }
     }
 }
 
@@ -300,6 +376,7 @@ function escala_mensal_carregar_dados($conn, $contexto, $missingTables)
     $dados['turnos'] = escala_mensal_carregar_turnos($conn);
     $dados['funcionarios'] = escala_mensal_carregar_funcionarios($conn, $contexto['equipa_id']);
     $dados['escala_guardada'] = escala_mensal_carregar_escala_guardada($conn, $contexto['ano'], $contexto['mes']);
+    $dados['setores'] = escala_mensal_carregar_setores($conn);
 
     return $dados;
 }
@@ -316,6 +393,23 @@ function escala_mensal_carregar_equipas($conn)
         $rows[] = $row;
     }
 
+    mysqli_stmt_close($stmt);
+    return $rows;
+}
+
+function escala_mensal_carregar_setores($conn)
+{
+    $rows = [];
+    if (!escala_mensal_table_exists($conn, 'setores')) {
+        return $rows;
+    }
+
+    $stmt = mysqli_prepare($conn, 'SELECT id, nome FROM setores WHERE ativo = 1 ORDER BY nome ASC');
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    while ($r = mysqli_fetch_assoc($res)) {
+        $rows[] = $r;
+    }
     mysqli_stmt_close($stmt);
     return $rows;
 }
@@ -339,7 +433,7 @@ function escala_mensal_carregar_funcionarios($conn, $equipaId)
 {
     $rows = [];
     $sql = "SELECT f.id, f.utilizador_id, f.nome, f.numero_mecanografico, f.funcao, f.equipa_id,
-                   e.nome AS equipa_nome
+                   e.nome AS equipa_nome, f.data_nascimento
             FROM funcionarios f
             LEFT JOIN equipas e ON e.id = f.equipa_id
             WHERE f.estado = 'ativo'";
@@ -379,5 +473,34 @@ function escala_mensal_carregar_escala_guardada($conn, $ano, $mes)
     }
 
     mysqli_stmt_close($stmt);
+    // carregar períodos/segundos turnos se existir tabela
+    if (escala_mensal_table_exists($conn, 'escala_periodos')) {
+        $stmt2 = mysqli_prepare($conn, 'SELECT * FROM escala_periodos WHERE YEAR(data_escala) = ? AND MONTH(data_escala) = ?');
+        mysqli_stmt_bind_param($stmt2, 'ii', $ano, $mes);
+        mysqli_stmt_execute($stmt2);
+        $res2 = mysqli_stmt_get_result($stmt2);
+        while ($r = mysqli_fetch_assoc($res2)) {
+            $fid = (int) $r['funcionario_id'];
+            $day = (int) date('j', strtotime($r['data_escala']));
+            if (!isset($escala[$fid][$day]['periodos'])) {
+                $escala[$fid][$day]['periodos'] = [];
+            }
+            $escala[$fid][$day]['periodos'][] = $r;
+        }
+        mysqli_stmt_close($stmt2);
+    }
     return $escala;
 }
+
+function escala_mensal_minutos_entre_horas($entrada, $saida)
+{
+    if (empty($entrada) || empty($saida)) return 0;
+    $fmtE = DateTime::createFromFormat('H:i', $entrada);
+    $fmtS = DateTime::createFromFormat('H:i', $saida);
+    if (!$fmtE || !$fmtS) return 0;
+    if ($fmtS <= $fmtE) {
+        $fmtS->modify('+1 day');
+    }
+    return (int) (($fmtS->getTimestamp() - $fmtE->getTimestamp()) / 60);
+}
+
