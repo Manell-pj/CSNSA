@@ -1,6 +1,6 @@
 # Adaptação SQL para lar de idosos
 
-Ficheiro principal: `database/2026_05_15_lar_idosos_assiduidade.sql`.
+Ficheiro principal: `database/schema_completo.sql`.
 
 ## Diagnóstico da estrutura atual
 

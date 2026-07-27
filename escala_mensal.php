@@ -32,6 +32,18 @@ foreach ($turnos as $t) {
     $minutos = escala_mensal_minutos_entre_horas($t['hora_entrada'], $t['hora_saida']);
     $minutosPorTurno[(int)$t['id']] = $minutos;
 }
+$turnoPaleta = ['turno-azul', 'turno-verde', 'turno-laranja', 'turno-roxo', 'turno-ciano', 'turno-rosa'];
+$classePorTurno = [];
+foreach ($turnos as $index => $t) {
+    $classePorTurno[(int) $t['id']] = $turnoPaleta[$index % count($turnoPaleta)];
+}
+$codigosTipoDia = [
+    'folga' => 'F',
+    'ferias' => 'Fe',
+    'falta' => 'A',
+    'baixa' => 'B',
+    'licenca_amamentacao' => 'L',
+];
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
 ?>
@@ -77,7 +89,7 @@ $alertMessage = $_GET['message'] ?? '';
                     <?php if (!empty($missingTables)): ?>
                         <div class="alert alert-warning" role="alert">
                             Faltam tabelas de base: <strong><?php echo e(implode(', ', $missingTables)); ?></strong>.
-                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> antes de usar esta página.
+                            Execute o schema <code>database/schema_completo.sql</code> antes de usar esta página.
                         </div>
                     <?php endif; ?>
 
@@ -142,23 +154,29 @@ $alertMessage = $_GET['message'] ?? '';
                             <div class="card-header">
                                 <div class="d-flex align-items-center flex-wrap gap-2">
                                     <h4 class="card-title mb-0"><?php echo e(month_name($mes)); ?> <?php echo (int) $ano; ?></h4>
-                                            <div class="ms-auto d-flex align-items-center flex-wrap gap-2">
-                                                <span class="badge bg-warning text-dark">Folga trabalhada</span>
-                                                <span class="badge bg-info text-dark">Substituição</span>
-                                                <div class="ms-2">
-                                                    <?php foreach ($turnos as $t): ?>
-                                                        <span class="badge bg-light text-dark border me-1"><?php echo e($t['codigo'] ?: $t['nome']); ?>: <?php echo e($t['hora_entrada'] . '–' . $t['hora_saida']); ?></span>
-                                                    <?php endforeach; ?>
-                                                </div>
-                                                <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalBulkAssign" <?php echo !empty($missingTables) ? 'disabled' : ''; ?> title="Atribuir a selecionados">
-                                                    <i class="fa fa-tasks"></i>
-                                                    Atribuir selecionados
-                                                </button>
-                                                <button type="submit" class="btn btn-success" <?php echo !empty($missingTables) ? 'disabled' : ''; ?>>
-                                                    <i class="fa fa-save"></i>
-                                                    Guardar escala
-                                                </button>
-                                            </div>
+                                    <div class="ms-auto d-flex align-items-center flex-wrap gap-2 escala-toolbar">
+                                        <div class="escala-legenda d-flex align-items-center flex-wrap gap-1">
+                                            <?php foreach ($turnos as $t): ?>
+                                                <span class="escala-legend-item <?php echo e($classePorTurno[(int) $t['id']] ?? 'turno-azul'); ?>">
+                                                    <?php echo e($t['codigo'] ?: $t['nome']); ?>
+                                                    <small><?php echo e(substr($t['hora_entrada'], 0, 5) . '-' . substr($t['hora_saida'], 0, 5)); ?></small>
+                                                </span>
+                                            <?php endforeach; ?>
+                                            <span class="escala-legend-item tipo-folga">F <small>Folga</small></span>
+                                            <span class="escala-legend-item tipo-ferias">Fe <small>Férias</small></span>
+                                            <span class="escala-legend-item tipo-ausencia">A <small>Falta</small></span>
+                                            <span class="escala-legend-item tipo-baixa">B <small>Baixa</small></span>
+                                            <span class="escala-legend-item tipo-substituicao">S <small>Subst.</small></span>
+                                        </div>
+                                        <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalBulkAssign" <?php echo !empty($missingTables) ? 'disabled' : ''; ?> title="Atribuir a selecionados">
+                                            <i class="fa fa-tasks"></i>
+                                            Atribuir selecionados
+                                        </button>
+                                        <button type="submit" class="btn btn-success" <?php echo !empty($missingTables) ? 'disabled' : ''; ?>>
+                                            <i class="fa fa-save"></i>
+                                            Guardar escala
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div class="card-body">
@@ -171,7 +189,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <table class="table table-bordered table-sm align-middle escala-table">
                                             <thead>
                                                 <tr>
-                                                    <th style="width:40px"><input type="checkbox" id="select_all_rows"></th>
+                                                    <th class="escala-select-col"><input type="checkbox" id="select_all_rows"></th>
                                                     <th class="escala-sticky-col">Funcionário</th>
                                                     <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                         <?php $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia); ?>
@@ -186,7 +204,7 @@ $alertMessage = $_GET['message'] ?? '';
                                             <tbody>
                                                 <?php foreach ($funcionarios as $funcionario): ?>
                                                     <tr>
-                                                        <td><input type="checkbox" class="select_row" name="selected_funcionarios[]" value="<?php echo (int)$funcionario['id']; ?>"></td>
+                                                        <td class="escala-select-col"><input type="checkbox" class="select_row" name="selected_funcionarios[]" value="<?php echo (int)$funcionario['id']; ?>"></td>
                                                         <th class="escala-sticky-col escala-funcionario">
                                                             <div class="fw-bold"><?php echo e($funcionario['nome']); ?></div>
                                                             <small class="text-muted">
@@ -205,7 +223,14 @@ $alertMessage = $_GET['message'] ?? '';
                                                             $substituiSelecionado = (int) ($registo['substitui_funcionario_id'] ?? 0);
                                                             $folgaTrabalhada = (int) ($registo['folga_trabalhada'] ?? 0) === 1;
                                                             $observacoes = $registo['observacoes'] ?? '';
-                                                            $cellClasses = [];
+                                                            $mostraTurnoNoDia = $tipoDia === 'turno' || $tipoDia === 'substituicao' || $folgaTrabalhada;
+                                                            $turnoInfo = $mostraTurnoNoDia ? ($turnosById[$turnoSelecionado] ?? null) : null;
+                                                            $codigoTurno = $turnoInfo ? ($turnoInfo['codigo'] ?: $turnoInfo['nome']) : '';
+                                                            $codigoDia = $codigoTurno ?: ($codigosTipoDia[$tipoDia] ?? '-');
+                                                            $labelDia = $turnoInfo
+                                                                ? ($turnoInfo['nome'] . ' (' . substr($turnoInfo['hora_entrada'], 0, 5) . '-' . substr($turnoInfo['hora_saida'], 0, 5) . ')')
+                                                                : tipo_label($tipoDia);
+                                                            $cellClasses = ['tipo-' . $tipoDia];
 
                                                             if ($folgaTrabalhada) {
                                                                 $cellClasses[] = 'escala-folga-trabalhada';
@@ -214,43 +239,62 @@ $alertMessage = $_GET['message'] ?? '';
                                                             if ($tipoDia === 'substituicao') {
                                                                 $cellClasses[] = 'escala-substituicao';
                                                             }
+
+                                                            if ($turnoSelecionado > 0 && isset($classePorTurno[$turnoSelecionado])) {
+                                                                $cellClasses[] = $classePorTurno[$turnoSelecionado];
+                                                            }
+
+                                                            if ($observacoes !== '') {
+                                                                $cellClasses[] = 'tem-observacoes';
+                                                            }
                                                             ?>
                                                             <td class="escala-cell <?php echo e(implode(' ', $cellClasses)); ?>">
-                                                                <select name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][tipo_dia]" class="form-select form-select-sm escala-tipo">
-                                                                    <?php foreach ($tiposDia as $tipo): ?>
-                                                                        <option value="<?php echo e($tipo); ?>" <?php echo $tipo === $tipoDia ? 'selected' : ''; ?>>
-                                                                            <?php echo e(tipo_label($tipo)); ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                </select>
+                                                                <button type="button" class="escala-chip" title="<?php echo e($labelDia); ?>">
+                                                                    <span class="escala-chip-code"><?php echo e($codigoDia); ?></span>
+                                                                    <?php if ($tipoDia === 'substituicao'): ?><span class="escala-chip-flag">S</span><?php endif; ?>
+                                                                    <?php if ($folgaTrabalhada): ?><span class="escala-chip-flag">+</span><?php endif; ?>
+                                                                </button>
+                                                                <div class="escala-editor">
+                                                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                                                        <strong>Dia <?php echo $dia; ?></strong>
+                                                                        <button type="button" class="btn btn-link btn-sm p-0 escala-editor-close">Fechar</button>
+                                                                    </div>
+                                                                    <select name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][tipo_dia]" class="form-select form-select-sm escala-tipo">
+                                                                        <?php foreach ($tiposDia as $tipo): ?>
+                                                                            <option value="<?php echo e($tipo); ?>" <?php echo $tipo === $tipoDia ? 'selected' : ''; ?>>
+                                                                                <?php echo e(tipo_label($tipo)); ?>
+                                                                            </option>
+                                                                        <?php endforeach; ?>
+                                                                    </select>
 
-                                                                <select name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][turno_id]" class="form-select form-select-sm mt-1 escala-turno">
-                                                                    <option value="">Sem turno</option>
-                                                                    <?php foreach ($turnos as $turno): ?>
-                                                                        <option value="<?php echo (int) $turno['id']; ?>" <?php echo (int) $turno['id'] === $turnoSelecionado ? 'selected' : ''; ?>>
-                                                                            <?php echo e($turno['codigo'] ?: $turno['nome']); ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                </select>
+                                                                    <select name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][turno_id]" class="form-select form-select-sm mt-2 escala-turno">
+                                                                        <option value="">Sem turno</option>
+                                                                        <?php foreach ($turnos as $turno): ?>
+                                                                            <option value="<?php echo (int) $turno['id']; ?>" data-code="<?php echo e($turno['codigo'] ?: $turno['nome']); ?>" data-class="<?php echo e($classePorTurno[(int) $turno['id']] ?? 'turno-azul'); ?>" data-label="<?php echo e($turno['nome'] . ' (' . substr($turno['hora_entrada'], 0, 5) . '-' . substr($turno['hora_saida'], 0, 5) . ')'); ?>" <?php echo (int) $turno['id'] === $turnoSelecionado ? 'selected' : ''; ?>>
+                                                                                <?php echo e($turno['codigo'] ?: $turno['nome']); ?> · <?php echo e(substr($turno['hora_entrada'], 0, 5) . '-' . substr($turno['hora_saida'], 0, 5)); ?>
+                                                                            </option>
+                                                                        <?php endforeach; ?>
+                                                                    </select>
 
-                                                                <select name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][substitui_funcionario_id]" class="form-select form-select-sm mt-1 escala-substitui">
-                                                                    <option value="">Substitui...</option>
-                                                                    <?php foreach ($funcionarios as $opcaoFuncionario): ?>
-                                                                        <?php if ((int) $opcaoFuncionario['id'] === (int) $funcionario['id']) {
-                                                                            continue;
-                                                                        } ?>
-                                                                        <option value="<?php echo (int) $opcaoFuncionario['id']; ?>" <?php echo (int) $opcaoFuncionario['id'] === $substituiSelecionado ? 'selected' : ''; ?>>
-                                                                            <?php echo e($opcaoFuncionario['nome']); ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                </select>
+                                                                    <select name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][substitui_funcionario_id]" class="form-select form-select-sm mt-2 escala-substitui">
+                                                                        <option value="">Substitui...</option>
+                                                                        <?php foreach ($funcionarios as $opcaoFuncionario): ?>
+                                                                            <?php if ((int) $opcaoFuncionario['id'] === (int) $funcionario['id']) {
+                                                                                continue;
+                                                                            } ?>
+                                                                            <option value="<?php echo (int) $opcaoFuncionario['id']; ?>" <?php echo (int) $opcaoFuncionario['id'] === $substituiSelecionado ? 'selected' : ''; ?>>
+                                                                                <?php echo e($opcaoFuncionario['nome']); ?>
+                                                                            </option>
+                                                                        <?php endforeach; ?>
+                                                                    </select>
 
-                                                                <div class="form-check mt-1 escala-folga-check">
-                                                                    <input class="form-check-input escala-folga-trabalhada-check" type="checkbox" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][folga_trabalhada]" id="folga<?php echo (int) $funcionario['id']; ?>_<?php echo $dia; ?>" <?php echo $folgaTrabalhada ? 'checked' : ''; ?>>
-                                                                    <label class="form-check-label" for="folga<?php echo (int) $funcionario['id']; ?>_<?php echo $dia; ?>">Folga trab.</label>
+                                                                    <div class="form-check mt-2 escala-folga-check">
+                                                                        <input class="form-check-input escala-folga-trabalhada-check" type="checkbox" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][folga_trabalhada]" id="folga<?php echo (int) $funcionario['id']; ?>_<?php echo $dia; ?>" <?php echo $folgaTrabalhada ? 'checked' : ''; ?>>
+                                                                        <label class="form-check-label" for="folga<?php echo (int) $funcionario['id']; ?>_<?php echo $dia; ?>">Folga trabalhada</label>
+                                                                    </div>
+
+                                                                    <input type="text" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][observacoes]" class="form-control form-control-sm mt-2 escala-observacoes" placeholder="Observações" value="<?php echo e($observacoes); ?>">
                                                                 </div>
-
-                                                                <input type="text" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][observacoes]" class="form-control form-control-sm mt-1" placeholder="Obs." value="<?php echo e($observacoes); ?>">
                                                             </td>
                                                             <?php
                                                             if ($turnoSelecionado > 0 && isset($minutosPorTurno[$turnoSelecionado])) {
@@ -327,96 +371,363 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
     <style>
         .escala-wrapper {
+            border: 1px solid #e7ebf3;
+            border-radius: 8px;
             max-height: 72vh;
             overflow: auto;
         }
 
         .escala-table {
-            min-width: 1800px;
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 1320px;
+            table-layout: fixed;
         }
 
         .escala-table th,
         .escala-table td {
-            vertical-align: top;
+            border-color: #e3e7ef !important;
+            padding: 4px;
+            vertical-align: middle;
+        }
+
+        .escala-select-col {
+            background: #f8fafc;
+            position: sticky;
+            left: 0;
+            text-align: center;
+            width: 38px;
+            z-index: 6;
+        }
+
+        .escala-table thead .escala-select-col {
+            top: 0;
+            z-index: 8;
         }
 
         .escala-sticky-col {
             background: #fff;
-            left: 0;
+            left: 38px;
             min-width: 240px;
             position: sticky;
-            z-index: 3;
-        }
-
-        .escala-table thead .escala-sticky-col {
+            width: 240px;
             z-index: 5;
         }
 
+        .escala-table thead .escala-sticky-col {
+            background: #f8fafc;
+            top: 0;
+            z-index: 7;
+        }
+
         .escala-dia-header {
-            min-width: 170px;
+            background: #f8fafc;
+            color: #1f2937;
+            min-width: 38px;
             position: sticky;
             top: 0;
-            z-index: 2;
-            background: #fff;
+            width: 38px;
+            z-index: 4;
+        }
+
+        .escala-dia-header div {
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .escala-dia-header small {
+            color: #6b7280;
+            display: block;
+            font-size: 0.66rem;
+            margin-top: 3px;
         }
 
         .escala-fim-semana {
-            background: #f7f7f7;
+            background: #eef2f7 !important;
         }
 
         .escala-cell {
-            min-width: 170px;
             background: #fff;
+            height: 38px;
+            min-width: 38px;
+            position: relative;
+            text-align: center;
+            width: 38px;
         }
 
-        .escala-folga-trabalhada {
-            background: #fff3cd !important;
-            border-color: #ffda6a !important;
+        .escala-chip {
+            align-items: center;
+            background: #f3f4f6;
+            border: 1px solid #d8dee9;
+            border-radius: 6px;
+            color: #1f2937;
+            cursor: pointer;
+            display: flex;
+            font-weight: 700;
+            height: 30px;
+            justify-content: center;
+            line-height: 1;
+            margin: 0 auto;
+            padding: 0;
+            position: relative;
+            width: 30px;
         }
 
-        .escala-substituicao {
-            background: #cff4fc !important;
-            border-color: #9eeaf9 !important;
+        .escala-chip-code {
+            font-size: 0.78rem;
         }
 
-        .escala-folga-trabalhada.escala-substituicao {
-            background: linear-gradient(135deg, #fff3cd 0%, #fff3cd 50%, #cff4fc 50%, #cff4fc 100%) !important;
+        .escala-chip-flag {
+            align-items: center;
+            background: #fff;
+            border: 1px solid currentColor;
+            border-radius: 50%;
+            bottom: -5px;
+            display: flex;
+            font-size: 0.56rem;
+            height: 13px;
+            justify-content: center;
+            position: absolute;
+            right: -5px;
+            width: 13px;
+        }
+
+        .escala-chip-flag + .escala-chip-flag {
+            right: 9px;
+        }
+
+        .turno-azul .escala-chip,
+        .turno-azul.escala-legend-item {
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+
+        .turno-verde .escala-chip,
+        .turno-verde.escala-legend-item {
+            background: #dcfce7;
+            border-color: #86efac;
+            color: #166534;
+        }
+
+        .turno-laranja .escala-chip,
+        .turno-laranja.escala-legend-item {
+            background: #ffedd5;
+            border-color: #fdba74;
+            color: #9a3412;
+        }
+
+        .turno-roxo .escala-chip,
+        .turno-roxo.escala-legend-item {
+            background: #ede9fe;
+            border-color: #c4b5fd;
+            color: #5b21b6;
+        }
+
+        .turno-ciano .escala-chip,
+        .turno-ciano.escala-legend-item {
+            background: #cffafe;
+            border-color: #67e8f9;
+            color: #0e7490;
+        }
+
+        .turno-rosa .escala-chip,
+        .turno-rosa.escala-legend-item {
+            background: #fce7f3;
+            border-color: #f9a8d4;
+            color: #9d174d;
+        }
+
+        .tipo-folga .escala-chip,
+        .tipo-folga.escala-legend-item {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .tipo-ferias .escala-chip,
+        .tipo-ferias.escala-legend-item {
+            background: #dcfce7;
+            border-color: #86efac;
+            color: #15803d;
+        }
+
+        .tipo-ausencia .escala-chip,
+        .tipo-ausencia.escala-legend-item,
+        .tipo-falta .escala-chip {
+            background: #fee2e2;
+            border-color: #fca5a5;
+            color: #b91c1c;
+        }
+
+        .tipo-baixa .escala-chip,
+        .tipo-baixa.escala-legend-item {
+            background: #e0f2fe;
+            border-color: #7dd3fc;
+            color: #075985;
+        }
+
+        .tipo-substituicao .escala-chip,
+        .tipo-substituicao.escala-legend-item {
+            box-shadow: inset 0 -3px 0 rgba(14, 116, 144, 0.34);
+        }
+
+        .escala-folga-trabalhada .escala-chip {
+            outline: 2px solid #facc15;
+            outline-offset: 1px;
+        }
+
+        .tem-observacoes .escala-chip:before {
+            background: #111827;
+            border-radius: 50%;
+            content: "";
+            height: 5px;
+            left: 4px;
+            position: absolute;
+            top: 4px;
+            width: 5px;
         }
 
         .escala-funcionario {
             white-space: normal;
         }
 
-        .escala-cell .form-select,
-        .escala-cell .form-control {
-            font-size: 0.75rem;
+        .escala-editor {
+            background: #fff;
+            border: 1px solid #cfd7e6;
+            border-radius: 8px;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+            display: none;
+            left: 4px;
+            min-width: 230px;
+            padding: 10px;
+            position: absolute;
+            text-align: left;
+            top: 38px;
+            z-index: 20;
+        }
+
+        .escala-cell.editor-open .escala-editor {
+            display: block;
+        }
+
+        .escala-cell:nth-last-child(-n+4) .escala-editor {
+            left: auto;
+            right: 4px;
         }
 
         .escala-folga-check {
             font-size: 0.72rem;
             min-height: auto;
         }
+
+        .escala-legend-item {
+            border: 1px solid #d8dee9;
+            border-radius: 6px;
+            display: inline-flex;
+            font-size: 0.75rem;
+            font-weight: 700;
+            gap: 5px;
+            line-height: 1;
+            padding: 6px 8px;
+        }
+
+        .escala-legend-item small {
+            font-weight: 500;
+            opacity: 0.82;
+        }
+
+        .escala-toolbar .btn {
+            white-space: nowrap;
+        }
+
+        .escala-table th:last-child,
+        .escala-table td:last-child {
+            background: #fff;
+            min-width: 92px;
+            position: sticky;
+            right: 0;
+            z-index: 4;
+        }
+
+        .escala-table thead th:last-child {
+            background: #f8fafc;
+            top: 0;
+            z-index: 6;
+        }
     </style>
     <script>
         $(document).ready(function () {
+            var tipoCodigos = {
+                folga: 'F',
+                ferias: 'Fe',
+                falta: 'A',
+                baixa: 'B',
+                licenca_amamentacao: 'L',
+                substituicao: 'S'
+            };
+            var tipoClasses = 'tipo-turno tipo-folga tipo-ferias tipo-falta tipo-baixa tipo-substituicao tipo-licenca_amamentacao';
+            var turnoClasses = 'turno-azul turno-verde turno-laranja turno-roxo turno-ciano turno-rosa';
+
             function atualizarCelula($cell) {
                 var tipo = $cell.find('.escala-tipo').val();
+                var $turno = $cell.find('.escala-turno');
+                var $turnoSelecionado = $turno.find('option:selected');
+                var turnoId = $turno.val();
                 var folgaTrabalhada = $cell.find('.escala-folga-trabalhada-check').is(':checked');
                 var mostrarSubstitui = tipo === 'substituicao';
                 var mostrarTurno = tipo === 'turno' || tipo === 'substituicao' || folgaTrabalhada;
+                var codigo = (mostrarTurno && turnoId) ? ($turnoSelecionado.data('code') || $turnoSelecionado.text().trim()) : (tipoCodigos[tipo] || '-');
+                var label = (mostrarTurno && turnoId) ? ($turnoSelecionado.data('label') || $turnoSelecionado.text().trim()) : $cell.find('.escala-tipo option:selected').text().trim();
+                var turnoClass = (mostrarTurno && turnoId) ? ($turnoSelecionado.data('class') || '') : '';
+                var temObservacoes = $.trim($cell.find('.escala-observacoes').val()) !== '';
 
+                $cell.removeClass(tipoClasses + ' ' + turnoClasses);
+                $cell.addClass('tipo-' + tipo);
+                if (turnoClass) {
+                    $cell.addClass(turnoClass);
+                }
                 $cell.toggleClass('escala-substituicao', mostrarSubstitui);
                 $cell.toggleClass('escala-folga-trabalhada', folgaTrabalhada);
+                $cell.toggleClass('tem-observacoes', temObservacoes);
                 $cell.find('.escala-substitui').toggle(mostrarSubstitui);
                 $cell.find('.escala-turno').toggle(mostrarTurno);
+                $cell.find('.escala-chip-code').text(codigo);
+                $cell.find('.escala-chip').attr('title', label);
+                $cell.find('.escala-chip-flag').remove();
+                if (mostrarSubstitui) {
+                    $cell.find('.escala-chip').append('<span class="escala-chip-flag">S</span>');
+                }
+                if (folgaTrabalhada) {
+                    $cell.find('.escala-chip').append('<span class="escala-chip-flag">+</span>');
+                }
             }
 
             $('.escala-cell').each(function () {
                 atualizarCelula($(this));
             });
 
-            $('.escala-tipo, .escala-folga-trabalhada-check').on('change', function () {
+            $('.escala-tipo, .escala-turno, .escala-folga-trabalhada-check, .escala-observacoes').on('change input', function () {
                 atualizarCelula($(this).closest('.escala-cell'));
+            });
+
+            $('.escala-chip').on('click', function (event) {
+                event.stopPropagation();
+                var $cell = $(this).closest('.escala-cell');
+                $('.escala-cell.editor-open').not($cell).removeClass('editor-open');
+                $cell.toggleClass('editor-open');
+            });
+
+            $('.escala-editor, .escala-editor select, .escala-editor input, .escala-editor label').on('click', function (event) {
+                event.stopPropagation();
+            });
+
+            $('.escala-editor-close').on('click', function () {
+                $(this).closest('.escala-cell').removeClass('editor-open');
+            });
+
+            $(document).on('click', function () {
+                $('.escala-cell.editor-open').removeClass('editor-open');
             });
 
             // filtros reativos: atualizar URL sem botão
@@ -454,5 +765,4 @@ $alertMessage = $_GET['message'] ?? '';
 </body>
 
 </html>
-
 

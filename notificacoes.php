@@ -133,7 +133,7 @@ if ($schemaReady && $canView) {
 
                     <?php if (!$schemaReady): ?>
                         <div class="alert alert-warning">
-                            Execute a migração <code>database/2026_07_16_notificacoes_aniversarios_diuturnidades.sql</code> para ativar notificações.
+                            Execute o schema <code>database/schema_completo.sql</code> para ativar notificações.
                         </div>
                     <?php elseif (!$canView): ?>
                         <div class="alert alert-danger">Não tem permissão para ver notificações.</div>

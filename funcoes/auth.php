@@ -8,6 +8,11 @@ require_once __DIR__ . '/permissoes.php';
 
 function auth_user($conn)
 {
+    if (!ac_table_exists($conn, 'utilizadores')) {
+        unset($_SESSION['utilizador_id'], $_SESSION['utilizador_nome']);
+        return null;
+    }
+
     $utilizadorId = (int) ($_SESSION['utilizador_id'] ?? 0);
 
     if ($utilizadorId <= 0) {
@@ -54,7 +59,7 @@ function auth_safe_redirect($redirect)
 {
     $redirect = trim((string) $redirect);
 
-    if ($redirect === '' || preg_match('#^https?://#i', $redirect) || str_starts_with($redirect, '//')) {
+    if ($redirect === '' || preg_match('#^https?://#i', $redirect) || strpos($redirect, '//') === 0) {
         return 'principal.php';
     }
 

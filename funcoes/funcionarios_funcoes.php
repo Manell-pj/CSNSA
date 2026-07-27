@@ -5,13 +5,42 @@ function e($value)
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
-function redirect_with_message($type, $message)
+function redirect_with_message($type, $message, array $params = [])
 {
-    header('Location: funcionarios.php?' . http_build_query([
+    header('Location: funcionarios.php?' . http_build_query(array_merge($params, [
         'type' => $type,
         'message' => $message,
-    ]));
+    ])));
     exit;
+}
+
+function normalizar_codigo_postal($value)
+{
+    $digits = preg_replace('/\D+/', '', (string) $value);
+
+    if ($digits === '') {
+        return null;
+    }
+
+    $digits = substr($digits, 0, 7);
+
+    if (strlen($digits) <= 4) {
+        return $digits;
+    }
+
+    return substr($digits, 0, 4) . '-' . substr($digits, 4);
+}
+
+function estado_civil_opcoes()
+{
+    return [
+        'Solteiro/a',
+        'Casado/a',
+        'Unido/a de facto',
+        'Divorciado/a',
+        'Separado/a',
+        'Viúvo/a',
+    ];
 }
 
 function get_post_value($key)

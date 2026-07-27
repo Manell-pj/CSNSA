@@ -265,11 +265,6 @@ $alertMessage = $_GET['message'] ?? '';
                                                         <button type="button" class="btn btn-link btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalEditarUtilizador<?php echo (int) $utilizador['id']; ?>" title="Editar">
                                                             <i class="fa fa-edit"></i>
                                                         </button>
-                                                        <?php if ((int) $utilizador['id'] !== (int) $utilizadorSessao['id']): ?>
-                                                            <button type="button" class="btn btn-link btn-danger" data-bs-toggle="modal" data-bs-target="#modalRemoverUtilizador<?php echo (int) $utilizador['id']; ?>" title="Remover">
-                                                                <i class="fa fa-times"></i>
-                                                            </button>
-                                                        <?php endif; ?>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -336,7 +331,6 @@ $alertMessage = $_GET['message'] ?? '';
         <div class="modal fade" id="modalEditarUtilizador<?php echo (int) $utilizador['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
-                    <input type="hidden" name="acao" value="editar">
                     <input type="hidden" name="id" value="<?php echo (int) $utilizador['id']; ?>">
                     <div class="modal-header border-0">
                         <h5 class="modal-title">Editar utilizador</h5>
@@ -379,34 +373,16 @@ $alertMessage = $_GET['message'] ?? '';
                         <?php endif; ?>
                     </div>
                     <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-primary">Guardar alterações</button>
+                        <?php if ((int) $utilizador['id'] !== (int) $utilizadorSessao['id']): ?>
+                            <button type="submit" name="acao" value="remover" class="btn btn-danger me-auto" formnovalidate onclick="return confirm('Tem a certeza que pretende remover este utilizador?');">Remover</button>
+                        <?php endif; ?>
+                        <button type="submit" name="acao" value="editar" class="btn btn-primary">Guardar alterações</button>
                         <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="modal fade" id="modalRemoverUtilizador<?php echo (int) $utilizador['id']; ?>" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <form method="post" class="modal-content">
-                    <input type="hidden" name="acao" value="remover">
-                    <input type="hidden" name="id" value="<?php echo (int) $utilizador['id']; ?>">
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Remover utilizador</h5>
-                        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-0">Tem a certeza que pretende remover <strong><?php echo e($utilizador['nome']); ?></strong>?</p>
-                    </div>
-                    <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-danger">Remover</button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
     <?php endforeach; ?>
 
     <?php include 'includes/scripts.php'; ?>

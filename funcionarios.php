@@ -66,7 +66,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
-            redirect_with_message('success', 'Tipo de contrato criado com sucesso.');
+            redirect_with_message('success', 'Tipo de contrato criado com sucesso.', [
+                'modal' => 'adicionar_funcionario',
+                'step' => 2,
+            ]);
         } catch (mysqli_sql_exception $e) {
             redirect_with_message('danger', 'Não foi possível criar o tipo de contrato. Verifique se a designação já existe.');
         }
@@ -102,6 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $estado = get_post_value('estado') ?: 'ativo';
         $observacoes = nullable_text($_POST['observacoes'] ?? '');
         $conjugue = isset($_POST['conjugue']) ? 1 : 0;
+        $estadoCivil = nullable_text($_POST['estado_civil'] ?? '');
+        $irsEstadoCivil = nullable_text($_POST['irs_estado_civil'] ?? '') ?: $estadoCivil;
+        $codigoPostal = normalizar_codigo_postal($_POST['codigo_postal'] ?? '');
 
         $tipoContratoSelecionado = null;
         if ($tipoContratoId !== null) {
@@ -133,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'naturalidade' => nullable_text($_POST['naturalidade'] ?? ''),
             'codigo_residencia' => nullable_text($_POST['codigo_residencia'] ?? ''),
             'genero' => nullable_text($_POST['genero'] ?? ''),
-            'estado_civil' => nullable_text($_POST['estado_civil'] ?? ''),
+            'estado_civil' => $estadoCivil,
             'tipo_contrato' => $tipoContrato,
             'tipo_contrato_id' => $tipoContratoId,
             'tipo_contrato_codigo' => $tipoContratoSelecionado['codigo'] ?? nullable_text($_POST['tipo_contrato_codigo'] ?? ''),
@@ -142,14 +148,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'morada' => nullable_text($_POST['morada'] ?? ''),
             'localidade' => nullable_text($_POST['localidade'] ?? ''),
             'codigo_pais' => nullable_text($_POST['codigo_pais'] ?? ''),
-            'codigo_postal' => nullable_text($_POST['codigo_postal'] ?? ''),
+            'codigo_postal' => $codigoPostal,
             'telemovel' => nullable_text($_POST['telemovel'] ?? ''),
             'data_admissao' => $dataAdmissao,
             'codigo_admissao' => nullable_text($_POST['codigo_admissao'] ?? ''),
             'data_cessacao' => $dataCessacao,
             'codigo_demissao' => nullable_text($_POST['codigo_demissao'] ?? ''),
             'nif' => nullable_text($_POST['nif'] ?? ''),
-            'irs_estado_civil' => nullable_text($_POST['irs_estado_civil'] ?? ''),
+            'irs_estado_civil' => $irsEstadoCivil,
             'conjugue' => $conjugue,
             'nif_conjugue' => nullable_text($_POST['nif_conjugue'] ?? ''),
             'residencia_irs' => nullable_text($_POST['residencia_irs'] ?? ''),
@@ -261,6 +267,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_with_message('danger', 'Introduza um email válido.');
         }
 
+        if ($codigoPostal !== null && !preg_match('/^\d{4}-\d{3}$/', $codigoPostal)) {
+            redirect_with_message('danger', 'Introduza um código postal válido no formato 0000-000.');
+        }
+
         if ($cargaHoraria <= 0) {
             redirect_with_message('danger', 'A carga horaria semanal deve ser superior a zero.');
         }
@@ -337,11 +347,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $hasMotivoCol = mysqli_num_rows($res2) > 0;
 
             if ($hasDataCol && $hasMotivoCol) {
+                $estadoInativo = 'inativo';
                 $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET estado = ?, data_desativacao = NOW(), motivo_desativacao = ? WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'ssi', $estadoInativo = 'inativo', $motivo, $id);
+                mysqli_stmt_bind_param($stmt, 'ssi', $estadoInativo, $motivo, $id);
             } else {
+                $estadoInativo = 'inativo';
                 $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET estado = ? WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'si', $estadoInativo = 'inativo', $id);
+                mysqli_stmt_bind_param($stmt, 'si', $estadoInativo, $id);
             }
 
             mysqli_stmt_execute($stmt);
@@ -471,7 +483,7 @@ $alertMessage = $_GET['message'] ?? '';
 
                     <?php if (!empty($missingTables)): ?>
                         <div class="alert alert-warning" role="alert">
-                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> antes de gerir funcionários.
+                            Execute o schema <code>database/schema_completo.sql</code> antes de gerir funcionários.
                         </div>
                     <?php endif; ?>
 
@@ -525,11 +537,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                         <button type="button" class="btn btn-link btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalEditarFuncionario<?php echo (int) $funcionario['id']; ?>" title="Editar">
                                                             <i class="fa fa-edit"></i>
                                                         </button>
-                                                        <?php if ($funcionario['estado'] === 'ativo'): ?>
-                                                            <button type="button" class="btn btn-link btn-warning btn-lg" data-bs-toggle="modal" data-bs-target="#modalDesativarFuncionario<?php echo (int) $funcionario['id']; ?>" title="Desativar">
-                                                                <i class="fa fa-user-times"></i>
-                                                            </button>
-                                                        <?php else: ?>
+                                                        <?php if ($funcionario['estado'] !== 'ativo'): ?>
                                                             <form method="post" style="display:inline" onsubmit="return confirm('Reativar funcionário?');">
                                                                 <input type="hidden" name="acao" value="reativar">
                                                                 <input type="hidden" name="id" value="<?php echo (int) $funcionario['id']; ?>">
@@ -605,7 +613,6 @@ $alertMessage = $_GET['message'] ?? '';
         <div class="modal fade" id="modalEditarFuncionario<?php echo (int) $funcionario['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-xl" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
-                    <input type="hidden" name="acao" value="editar">
                     <input type="hidden" name="id" value="<?php echo (int) $funcionario['id']; ?>">
                     <div class="modal-header border-0">
                         <h5 class="modal-title">Editar funcionário</h5>
@@ -619,41 +626,26 @@ $alertMessage = $_GET['message'] ?? '';
                         $funcionarioForm = $funcionario;
                         include __DIR__ . '/includes/funcionario_form_campos.php';
                         ?>
+                        <?php if ($funcionario['estado'] === 'ativo'): ?>
+                            <hr>
+                            <div class="mb-0">
+                                <p class="mb-2">Desativar este funcionario nao elimina dados historicos.</p>
+                                <label class="form-label">Motivo da desativacao (opcional)</label>
+                                <textarea name="motivo_desativacao" class="form-control" rows="3"></textarea>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-primary">Guardar alterações</button>
+                        <?php if ($funcionario['estado'] === 'ativo'): ?>
+                            <button type="submit" name="acao" value="desativar" class="btn btn-warning me-auto" formnovalidate onclick="return confirm('Tem a certeza que pretende desativar este funcionario? Os registos historicos serao preservados.');">Desativar</button>
+                        <?php endif; ?>
+                        <button type="submit" name="acao" value="editar" class="btn btn-primary">Guardar alterações</button>
                         <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="modal fade" id="modalDesativarFuncionario<?php echo (int) $funcionario['id']; ?>" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <form method="post" class="modal-content" onsubmit="return confirm('Tem a certeza que pretende desativar este funcionário? Os registos históricos serão preservados.');">
-                    <input type="hidden" name="acao" value="desativar">
-                    <input type="hidden" name="id" value="<?php echo (int) $funcionario['id']; ?>">
-                    <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Desativar funcionário</h5>
-                        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-2">Vai desativar <strong><?php echo e($funcionario['nome']); ?></strong>. Esta ação não elimina dados históricos.</p>
-                        <div class="mb-3">
-                            <label class="form-label">Motivo da desativação (opcional)</label>
-                            <textarea name="motivo_desativacao" class="form-control" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-warning">Desativar</button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
     <?php endforeach; ?>
 
     <style>
@@ -760,6 +752,24 @@ $alertMessage = $_GET['message'] ?? '';
                 $wizard.find('.js-contrato-taxa').val($option.data('taxa') || '');
             });
 
+            $(document).on('change', '.js-estado-civil', function () {
+                var $wizard = $(this).closest('.funcionario-wizard');
+                $wizard.find('.js-irs-estado-civil').val($(this).val());
+            });
+
+            $(document).on('change', '.js-irs-estado-civil', function () {
+                var $wizard = $(this).closest('.funcionario-wizard');
+                $wizard.find('.js-estado-civil').val($(this).val());
+            });
+
+            $(document).on('input', '.js-codigo-postal', function () {
+                var digits = $(this).val().replace(/\D/g, '').slice(0, 7);
+                if (digits.length > 4) {
+                    digits = digits.slice(0, 4) + '-' + digits.slice(4);
+                }
+                $(this).val(digits);
+            });
+
             $('.needs-validation').on('submit', function (event) {
                 var $form = $(this);
                 if (($form.find('button[type="submit"][clicked=true]').val() || '') === 'criar_tipo_contrato') {
@@ -799,6 +809,16 @@ $alertMessage = $_GET['message'] ?? '';
                 $('button[type="submit"]').removeAttr('clicked');
                 $(this).attr('clicked', 'true');
             });
+
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('modal') === 'adicionar_funcionario') {
+                var $modal = $('#modalCriarFuncionario');
+                var step = parseInt(params.get('step') || '0', 10);
+                var $wizard = $modal.find('.funcionario-wizard');
+                $wizard.data('step', isNaN(step) ? 0 : step);
+                refreshWizard($wizard);
+                $modal.modal('show');
+            }
         });
     </script>
 </body>

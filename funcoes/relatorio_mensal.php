@@ -118,7 +118,7 @@ function rm_entradas_saidas($movimentos)
     $partes = [];
     foreach ($movimentos as $movimento) {
         if (in_array($movimento['tipo'], ['entrada', 'entrada_segundo_turno', 'saida', 'saida_segundo_turno'], true)) {
-            $label = str_starts_with($movimento['tipo'], 'entrada') ? 'E' : 'S';
+            $label = strpos($movimento['tipo'], 'entrada') === 0 ? 'E' : 'S';
             $partes[] = $label . ' ' . rm_formatar_hora($movimento['data_hora']);
         }
     }

@@ -1,6 +1,14 @@
 <?php
 $formId = 'funcionarioWizard' . (int) ($funcionarioForm['id'] ?? 0);
 $entidadePadrao = 'Centro Social Nossa Senhora Auxiliador';
+$estadoCivilOpcoes = function_exists('estado_civil_opcoes') ? estado_civil_opcoes() : [
+    'Solteiro/a',
+    'Casado/a',
+    'Unido/a de facto',
+    'Divorciado/a',
+    'Separado/a',
+    'Viúvo/a',
+];
 $funcionarioForm = array_merge([
     'entidade' => $entidadePadrao,
     'data_ficha' => date('Y-m-d'),
@@ -95,6 +103,12 @@ $funcionarioForm = array_merge([
     'codigo_biometrico' => '',
     'estado' => 'ativo',
 ], $funcionarioForm ?? []);
+
+foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
+    if (($funcionarioForm[$estadoCivilCampo] ?? '') !== '' && !in_array($funcionarioForm[$estadoCivilCampo], $estadoCivilOpcoes, true)) {
+        $estadoCivilOpcoes[] = $funcionarioForm[$estadoCivilCampo];
+    }
+}
 ?>
 
 <div class="funcionario-wizard" id="<?php echo e($formId); ?>">
@@ -164,7 +178,14 @@ $funcionarioForm = array_merge([
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label">Estado Civil *</label>
-                <input type="text" name="estado_civil" class="form-control" value="<?php echo e($funcionarioForm['estado_civil']); ?>" required>
+                <select name="estado_civil" class="form-select js-estado-civil" required>
+                    <option value="">Selecionar</option>
+                    <?php foreach ($estadoCivilOpcoes as $estadoCivilOpcao): ?>
+                        <option value="<?php echo e($estadoCivilOpcao); ?>" <?php echo $funcionarioForm['estado_civil'] === $estadoCivilOpcao ? 'selected' : ''; ?>>
+                            <?php echo e($estadoCivilOpcao); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label">Data de Nascimento *</label>
@@ -254,7 +275,7 @@ $funcionarioForm = array_merge([
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Código Postal *</label>
-                <input type="text" name="codigo_postal" class="form-control" value="<?php echo e($funcionarioForm['codigo_postal']); ?>" required>
+                <input type="text" name="codigo_postal" class="form-control js-codigo-postal" value="<?php echo e($funcionarioForm['codigo_postal']); ?>" inputmode="numeric" maxlength="8" pattern="\d{4}-\d{3}" placeholder="0000-000" required>
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Telefone</label>
@@ -295,7 +316,14 @@ $funcionarioForm = array_merge([
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Estado Civil *</label>
-                <input type="text" name="irs_estado_civil" class="form-control" value="<?php echo e($funcionarioForm['irs_estado_civil']); ?>" required>
+                <select name="irs_estado_civil" class="form-select js-irs-estado-civil" required>
+                    <option value="">Selecionar</option>
+                    <?php foreach ($estadoCivilOpcoes as $estadoCivilOpcao): ?>
+                        <option value="<?php echo e($estadoCivilOpcao); ?>" <?php echo $funcionarioForm['irs_estado_civil'] === $estadoCivilOpcao ? 'selected' : ''; ?>>
+                            <?php echo e($estadoCivilOpcao); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <div class="col-md-2 mb-3 d-flex align-items-end">
                 <div class="form-check">

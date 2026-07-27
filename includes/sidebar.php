@@ -62,7 +62,7 @@
                 </li>
                 <li class="nav-item <?php echo $paginaAtual === 'turnos.php' ? 'active' : ''; ?>">
                     <a href="turnos.php">
-                        <i class="fas fa-business-time"></i>
+                        <i class="fas fa-briefcase"></i>
                         <p>Turnos</p>
                     </a>
                 </li>

@@ -39,6 +39,18 @@ function assiduidade_dt_sql($dt)
     return $dt instanceof DateTime ? $dt->format('Y-m-d H:i:s') : null;
 }
 
+function assiduidade_coluna_existe($conn, $table, $column)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS total FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+    mysqli_stmt_bind_param($stmt, 'ss', $table, $column);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    return (int) ($row['total'] ?? 0) > 0;
+}
+
 function assiduidade_obter_turno_periodos($conn, $turnoId)
 {
     if (!$turnoId) {
@@ -129,6 +141,11 @@ function assiduidade_obter_registos_ponto($conn, $funcionarioId, $utilizadorId, 
     $fimJanela = $fimJanelaDt->format('Y-m-d H:i:s');
     $registos = [];
 
+    $temDataReferencia = assiduidade_coluna_existe($conn, 'registos_ponto', 'data_referencia');
+    $filtroData = $temDataReferencia
+        ? '(data_referencia = ? OR (data_referencia IS NULL AND data_hora BETWEEN ? AND ?))'
+        : 'data_hora BETWEEN ? AND ?';
+
     $sql = "SELECT id, tipo, data_hora
             FROM registos_ponto
             WHERE estado IN ('valido', 'corrigido')
@@ -136,13 +153,14 @@ function assiduidade_obter_registos_ponto($conn, $funcionarioId, $utilizadorId, 
                     (funcionario_id = ?)
                     OR (? IS NOT NULL AND utilizador_id = ?)
               )
-              AND (
-                    data_referencia = ?
-                    OR (data_referencia IS NULL AND data_hora BETWEEN ? AND ?)
-              )
+              AND $filtroData
             ORDER BY data_hora ASC, id ASC";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, 'iiisss', $funcionarioId, $utilizadorId, $utilizadorId, $data, $inicioJanela, $fimJanela);
+    if ($temDataReferencia) {
+        mysqli_stmt_bind_param($stmt, 'iiisss', $funcionarioId, $utilizadorId, $utilizadorId, $data, $inicioJanela, $fimJanela);
+    } else {
+        mysqli_stmt_bind_param($stmt, 'iiiss', $funcionarioId, $utilizadorId, $utilizadorId, $inicioJanela, $fimJanela);
+    }
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
 

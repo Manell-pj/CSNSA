@@ -199,8 +199,6 @@ foreach ($funcionarios as $funcionario) {
                                             <th>Horas trabalhadas</th>
                                             <th>Saldo final</th>
                                             <th>Ajustes</th>
-                                            <th>Primeira picagem</th>
-                                            <th>Última picagem</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -213,8 +211,6 @@ foreach ($funcionarios as $funcionario) {
                                                 <td><span class="badge badge-primary"><?php echo e(ht_formatar_minutos($funcionario['minutos_trabalhados'])); ?></span></td>
                                                 <td><span class="badge badge-<?php echo $funcionario['saldo_final'] >= 0 ? 'success' : 'danger'; ?>"><?php echo e(ht_formatar_minutos($funcionario['saldo_final'])); ?></span></td>
                                                 <td><span class="badge badge-info"><?php echo e(ht_formatar_minutos($funcionario['minutos_ajustados'])); ?></span></td>
-                                                <td><?php echo $funcionario['primeira_picagem'] ? e(date('d/m/Y H:i', strtotime($funcionario['primeira_picagem']))) : '-'; ?></td>
-                                                <td><?php echo $funcionario['ultima_picagem'] ? e(date('d/m/Y H:i', strtotime($funcionario['ultima_picagem']))) : '-'; ?></td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>

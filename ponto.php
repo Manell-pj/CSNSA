@@ -299,7 +299,7 @@ $alertMessage = $_GET['message'] ?? '';
 
                     <?php if (!empty($missingTables) || !$temFuncionarioRegisto): ?>
                         <div class="alert alert-warning" role="alert">
-                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> para ativar registos por funcionário.
+                            Execute o schema <code>database/schema_completo.sql</code> para ativar registos por funcionário.
                         </div>
                     <?php endif; ?>
 

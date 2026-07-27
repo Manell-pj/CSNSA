@@ -9,12 +9,19 @@ $horasPrevistas = isset($turno['horas_previstas']) ? $turno['horas_previstas'] :
 $turnoNoturno = isset($turno['turno_noturno']) && (int) $turno['turno_noturno'] === 1;
 $ativo = !isset($turno) || (int) ($turno['ativo'] ?? 1) === 1;
 $periodosData = $periodos ?? [];
+$periodosData = array_map(static function ($periodo) {
+    return [
+        'inicio' => substr((string) ($periodo['inicio'] ?? $periodo['hora_inicio'] ?? ''), 0, 5),
+        'fim' => substr((string) ($periodo['fim'] ?? $periodo['hora_fim'] ?? ''), 0, 5),
+    ];
+}, $periodosData);
 if (empty($periodosData) && isset($turno['hora_entrada'], $turno['hora_saida'])) {
     $periodosData[] = [
         'inicio' => substr($turno['hora_entrada'], 0, 5),
         'fim' => substr($turno['hora_saida'], 0, 5),
     ];
 }
+$turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) spl_object_id((object) $periodosData)), 0, 6);
 ?>
 <div class="row">
     <div class="col-md-6 mb-3">
@@ -48,14 +55,14 @@ if (empty($periodosData) && isset($turno['hora_entrada'], $turno['hora_saida']))
     </div>
     <div class="col-md-4 mb-3">
         <div class="form-check mt-2">
-            <input class="form-check-input" type="checkbox" name="turno_noturno" id="criarTurnoNoturno" <?php echo $turnoNoturno ? 'checked' : ''; ?>>
-            <label class="form-check-label" for="criarTurnoNoturno">Turno noturno</label>
+            <input class="form-check-input" type="checkbox" name="turno_noturno" id="turnoNoturno<?php echo e($turnoFormId); ?>" <?php echo $turnoNoturno ? 'checked' : ''; ?>>
+            <label class="form-check-label" for="turnoNoturno<?php echo e($turnoFormId); ?>">Turno noturno</label>
         </div>
     </div>
     <div class="col-md-4 mb-3">
         <div class="form-check mt-2">
-            <input class="form-check-input" type="checkbox" name="ativo" id="criarTurnoAtivo" <?php echo $ativo ? 'checked' : ''; ?>>
-            <label class="form-check-label" for="criarTurnoAtivo">Ativo</label>
+            <input class="form-check-input" type="checkbox" name="ativo" id="turnoAtivo<?php echo e($turnoFormId); ?>" <?php echo $ativo ? 'checked' : ''; ?>>
+            <label class="form-check-label" for="turnoAtivo<?php echo e($turnoFormId); ?>">Ativo</label>
         </div>
     </div>
 </div>

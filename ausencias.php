@@ -1,8 +1,30 @@
 <?php
-session_start();
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/funcoes/ausencias_funcoes.php';
+
+function mes_nome_pt($mes)
+{
+    $nomes = [
+        1 => 'Janeiro',
+        2 => 'Fevereiro',
+        3 => 'Marco',
+        4 => 'Abril',
+        5 => 'Maio',
+        6 => 'Junho',
+        7 => 'Julho',
+        8 => 'Agosto',
+        9 => 'Setembro',
+        10 => 'Outubro',
+        11 => 'Novembro',
+        12 => 'Dezembro',
+    ];
+
+    return $nomes[(int) $mes] ?? '';
+}
 
 $utilizadorSessao = require_login($conn);
 ac_require_any($conn, $utilizadorSessao, ['ausencias.gerir', 'ferias.gerir', 'justificacoes.validar']);
@@ -212,13 +234,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($stmtIns);
 
                 // Garantir tabela de histórico existe.
-                ensure_escala_hist_table($conn);
+                $tabelaEscalaAprovacao = ac_table_exists($conn, 'escala_funcionarios') ? 'escala_funcionarios' : (ac_table_exists($conn, 'escala_mensal_dias') ? 'escala_mensal_dias' : null);
+                $usarHistoricoEscalaAntiga = $tabelaEscalaAprovacao === 'escala_mensal_dias';
+
+                if ($usarHistoricoEscalaAntiga) {
+                    ensure_escala_hist_table($conn);
+                }
                 // Atualizar escala_mensal_dias: para cada dia no período, se existir entrada, guardar histórico e marcar férias.
                 $cur = new DateTime($pedidoRow['data_inicio']);
                 $end = new DateTime($pedidoRow['data_fim']);
-                while ($cur <= $end) {
+                while ($tabelaEscalaAprovacao && $cur <= $end) {
                     $d = $cur->format('Y-m-d');
-                    $q = mysqli_prepare($conn, 'SELECT id, funcionario_id, tipo_dia, turno_id, minutos_previstos, observacoes FROM escala_mensal_dias WHERE funcionario_id = ? AND data_escala = ? LIMIT 1');
+                    $q = mysqli_prepare($conn, "SELECT id, funcionario_id, tipo_dia, turno_id, 0 AS minutos_previstos, observacoes FROM $tabelaEscalaAprovacao WHERE funcionario_id = ? AND data_escala = ? LIMIT 1");
                     mysqli_stmt_bind_param($q, 'is', $funcionarioId, $d);
                     mysqli_stmt_execute($q);
                     $resq = mysqli_stmt_get_result($q);
@@ -233,15 +260,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $esc_min = (int)$esc['minutos_previstos'];
                         $esc_obs = $esc['observacoes'] ?? '';
 
-                        $stmtHist = mysqli_prepare($conn, 'INSERT INTO escala_mensal_dias_hist
-                            (escala_dia_id, funcionario_id, data_escala, turno_id, tipo_dia, minutos_previstos, observacoes, alterado_por)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                        mysqli_stmt_bind_param($stmtHist, 'iisisisi', $esc_id, $esc_func, $d, $esc_turno, $esc_tipo, $esc_min, $esc_obs, $aprovadoPor);
-                        mysqli_stmt_execute($stmtHist);
-                        mysqli_stmt_close($stmtHist);
+                        if ($usarHistoricoEscalaAntiga) {
+                            $stmtHist = mysqli_prepare($conn, 'INSERT INTO escala_mensal_dias_hist
+                                (escala_dia_id, funcionario_id, data_escala, turno_id, tipo_dia, minutos_previstos, observacoes, alterado_por)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                            mysqli_stmt_bind_param($stmtHist, 'iisisisi', $esc_id, $esc_func, $d, $esc_turno, $esc_tipo, $esc_min, $esc_obs, $aprovadoPor);
+                            mysqli_stmt_execute($stmtHist);
+                            mysqli_stmt_close($stmtHist);
+                        }
 
                         $note = 'Férias aprovadas (pedido ' . $pedidoId . ') por ' . mysqli_real_escape_string($conn, $utilizadorAutenticado['nome']) . ' em ' . date('Y-m-d H:i');
-                        $qup = mysqli_prepare($conn, 'UPDATE escala_mensal_dias SET tipo_dia = ?, observacoes = CONCAT(IFNULL(observacoes, ""), ?) WHERE id = ?');
+                        $qup = mysqli_prepare($conn, "UPDATE $tabelaEscalaAprovacao SET tipo_dia = ?, observacoes = CONCAT(IFNULL(observacoes, ''), ?) WHERE id = ?");
                         $tfer = 'ferias';
                         mysqli_stmt_bind_param($qup, 'ssi', $tfer, $note, $esc_id);
                         mysqli_stmt_execute($qup);
@@ -308,6 +337,17 @@ $resf = mysqli_stmt_get_result($stmt);
 while ($r = mysqli_fetch_assoc($resf)) { $feriasFuturas[] = $r; }
 mysqli_stmt_close($stmt);
 
+$equipasRelatorio = [];
+if (ac_table_exists($conn, 'equipas')) {
+    $stmt = mysqli_prepare($conn, 'SELECT id, nome FROM equipas WHERE ativo = 1 ORDER BY nome ASC');
+    mysqli_stmt_execute($stmt);
+    $resEq = mysqli_stmt_get_result($stmt);
+    while ($eq = mysqli_fetch_assoc($resEq)) {
+        $equipasRelatorio[] = $eq;
+    }
+    mysqli_stmt_close($stmt);
+}
+
 // Relatório de ausências: aceitar filtros via GET
 $relatorio = [];
 if (isset($_GET['relatorio']) && $temPermissaoAprovar) {
@@ -321,6 +361,9 @@ if (isset($_GET['relatorio']) && $temPermissaoAprovar) {
         $endDt = new DateTime($start);
         $endDt->modify('last day of this month');
         $end = $endDt->format('Y-m-d');
+    } elseif ($year && $month === 0 && $start === '' && $end === '') {
+        $start = sprintf('%04d-01-01', $year);
+        $end = sprintf('%04d-12-31', $year);
     }
 
     // validar datas
@@ -331,22 +374,24 @@ if (isset($_GET['relatorio']) && $temPermissaoAprovar) {
         $today = date('Y-m-d');
         if ($end > $today && !$temPermissaoAprovar) {
             $relatorio['erro'] = 'Não é permitido gerar relatórios com períodos futuros.';
+        } elseif (!ac_table_exists($conn, 'resumo_diario_assiduidade')) {
+            $relatorio['erro'] = 'Ainda não existem resumos diários para gerar o relatório. Calcule a assiduidade do período primeiro.';
         } else {
             // agregação usando resumo_diario_assiduidade (recomenda-se executar o calculador primeiro)
             $sql = "SELECT r.funcionario_id, f.nome AS funcionario_nome, SUM(r.falta) AS dias_falta, SUM(r.minutos_previstos - r.minutos_trabalhados) AS minutos_falta, SUM(r.minutos_atraso) AS minutos_atraso, SUM(r.minutos_extra) AS minutos_extra FROM resumo_diario_assiduidade r INNER JOIN funcionarios f ON f.id = r.funcionario_id WHERE r.data BETWEEN ? AND ?";
             $params = [$start, $end];
+            $types = 'ss';
             if (!empty($_GET['equipa_id'])) {
-                $sql .= ' AND r.equipa_id = ?'; $params[] = (int) $_GET['equipa_id'];
+                $sql .= ' AND r.equipa_id = ?'; $params[] = (int) $_GET['equipa_id']; $types .= 'i';
             }
             if (!empty($_GET['tipo_falta']) && in_array($_GET['tipo_falta'], ['ausente','ferias','baixa'])) {
                 // filter by estado
-                $sql .= ' AND r.estado = ?'; $params[] = $_GET['tipo_falta'];
+                $sql .= ' AND r.estado = ?'; $params[] = $_GET['tipo_falta']; $types .= 's';
             }
-            $sql .= ' GROUP BY r.funcionario_id ORDER BY f.nome ASC';
+            $sql .= ' GROUP BY r.funcionario_id, f.nome ORDER BY f.nome ASC';
 
             $stmt = mysqli_prepare($conn, $sql);
             // bind params dynamically
-            $types = str_repeat('s', count($params));
             $refs = [];
             foreach ($params as $k => $v) $refs[$k] = &$params[$k];
             array_unshift($refs, $types);
@@ -458,16 +503,28 @@ $alertMessage = $_GET['message'] ?? '';
                                     <select id="rel_month" name="month" class="form-select">
                                         <option value="0">-- Todos --</option>
                                         <?php for ($m=1;$m<=12;$m++): ?>
-                                            <option value="<?php echo $m; ?>" <?php echo (isset($_GET['month']) && (int)$_GET['month'] === $m) ? 'selected' : ''; ?>><?php echo strftime('%B', mktime(0,0,0,$m,1)); ?></option>
+                                            <option value="<?php echo $m; ?>" <?php echo (isset($_GET['month']) && (int)$_GET['month'] === $m) ? 'selected' : ''; ?>><?php echo e(mes_nome_pt($m)); ?></option>
                                         <?php endfor; ?>
                                     </select>
                                 </div>
                                 <div class="col-md-3"><label class="form-label">Ou intervalo (opcional)</label><div class="input-group"><input type="date" name="start" class="form-control" value="<?php echo e($_GET['start'] ?? ''); ?>"><input type="date" name="end" class="form-control" value="<?php echo e($_GET['end'] ?? ''); ?>"></div></div>
                                 <div class="col-md-2"><label class="form-label">Equipa</label>
-                                    <select name="equipa_id" class="form-select"><option value="">Todas</option></select>
+                                    <select name="equipa_id" class="form-select">
+                                        <option value="">Todas</option>
+                                        <?php foreach ($equipasRelatorio as $equipaRelatorio): ?>
+                                            <option value="<?php echo (int) $equipaRelatorio['id']; ?>" <?php echo (int) ($_GET['equipa_id'] ?? 0) === (int) $equipaRelatorio['id'] ? 'selected' : ''; ?>>
+                                                <?php echo e($equipaRelatorio['nome']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                                 <div class="col-md-2"><label class="form-label">Tipo</label>
-                                    <select name="tipo_falta" class="form-select"><option value="">Todos</option><option value="ausente">Ausente</option><option value="ferias">Férias</option><option value="baixa">Baixa</option></select>
+                                    <select name="tipo_falta" class="form-select">
+                                        <option value="">Todos</option>
+                                        <option value="ausente" <?php echo ($_GET['tipo_falta'] ?? '') === 'ausente' ? 'selected' : ''; ?>>Ausente</option>
+                                        <option value="ferias" <?php echo ($_GET['tipo_falta'] ?? '') === 'ferias' ? 'selected' : ''; ?>>Férias</option>
+                                        <option value="baixa" <?php echo ($_GET['tipo_falta'] ?? '') === 'baixa' ? 'selected' : ''; ?>>Baixa</option>
+                                    </select>
                                 </div>
                                 <div class="col-md-2"><button class="btn btn-primary">Gerar</button></div>
                             </form>

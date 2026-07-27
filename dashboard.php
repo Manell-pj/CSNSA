@@ -57,7 +57,7 @@ if ($notificacoesReady && ac_can($conn, (int) $utilizadorSessao['id'], 'notifica
                     <?php if (!empty($missingTables)): ?>
                         <div class="alert alert-warning" role="alert">
                             Faltam tabelas de base: <strong><?php echo e(implode(', ', $missingTables)); ?></strong>.
-                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code>.
+                            Execute o schema <code>database/schema_completo.sql</code>.
                         </div>
                     <?php endif; ?>
 

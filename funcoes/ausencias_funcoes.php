@@ -73,7 +73,7 @@ function guardar_anexo_seguro($file)
     }
 
     // store outside public uploads when possible
-    $diretorio = __DIR__ . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'ausencias';
+    $diretorio = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'ausencias';
 
     if (!is_dir($diretorio) && !mkdir($diretorio, 0755, true)) {
         throw new RuntimeException('Não foi possível preparar a pasta de anexos.');
@@ -138,8 +138,13 @@ function calcular_dias_ferias_por_escala($conn, $funcionario_id, $dataInicio, $d
     $dt = new DateTime($dataInicio);
     $end = new DateTime($dataFim);
 
+    $tabelaEscala = ac_table_exists($conn, 'escala_funcionarios') ? 'escala_funcionarios' : 'escala_mensal_dias';
+    if (!ac_table_exists($conn, $tabelaEscala)) {
+        return $out;
+    }
+
     // buscar entradas de escala entre as datas
-    $stmt = mysqli_prepare($conn, 'SELECT data_escala, tipo_dia, turno_id FROM escala_mensal_dias WHERE funcionario_id = ? AND data_escala BETWEEN ? AND ?');
+    $stmt = mysqli_prepare($conn, "SELECT data_escala, tipo_dia, turno_id FROM $tabelaEscala WHERE funcionario_id = ? AND data_escala BETWEEN ? AND ?");
     mysqli_stmt_bind_param($stmt, 'iss', $funcionario_id, $dataInicio, $dataFim);
     mysqli_stmt_execute($stmt);
     $rset = mysqli_stmt_get_result($stmt);
@@ -172,7 +177,7 @@ function calcular_dias_ferias_por_escala($conn, $funcionario_id, $dataInicio, $d
         $d = $curr->format('Y-m-d');
         if (isset($escala[$d])) {
             $row = $escala[$d];
-            $isWork = ($row['tipo_dia'] === 'trabalho' || !empty($row['turno_id']));
+            $isWork = (in_array($row['tipo_dia'], ['trabalho', 'turno', 'substituicao'], true) || !empty($row['turno_id']));
             $out['detalhe'][$d] = ['tipo' => $row['tipo_dia'], 'turno_id' => $row['turno_id'], 'conta' => $isWork ? 1 : 0];
             if ($isWork) $out['dias']++;
         } else {

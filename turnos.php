@@ -219,11 +219,15 @@ if ($temTabelaFuncionarios) {
 }
 
 $turnos = [];
+$selectAssociacoes = fe_table_exists($conn, 'horarios_turno') ? 'COUNT(ht.id)' : '0';
+$joinAssociacoes = fe_table_exists($conn, 'horarios_turno') ? 'LEFT JOIN horarios_turno ht ON ht.turno_id = t.id' : '';
 $sql = "SELECT
-            t.*,
-            COUNT(ht.id) AS total_associacoes
+            t.id, t.nome, t.codigo, t.hora_entrada, t.hora_saida, t.inicio_pausa, t.fim_pausa,
+            t.tolerancia_entrada_min, t.tolerancia_saida_min, t.horas_previstas, t.turno_noturno,
+            t.ativo, t.created_at, t.updated_at,
+            $selectAssociacoes AS total_associacoes
         FROM turnos t
-        LEFT JOIN horarios_turno ht ON ht.turno_id = t.id
+        $joinAssociacoes
         GROUP BY t.id, t.nome, t.codigo, t.hora_entrada, t.hora_saida, t.inicio_pausa, t.fim_pausa,
                  t.tolerancia_entrada_min, t.tolerancia_saida_min, t.horas_previstas, t.turno_noturno,
                  t.ativo, t.created_at, t.updated_at
@@ -244,23 +248,25 @@ if ($temTabelaTurnoPeriodos && !empty($turnos)) {
 }
 
 $associacoes = [];
-$associacaoNomeSelect = $temFuncionarioHorario ? 'f.nome AS funcionario_nome' : 'u.nome AS funcionario_nome';
-$associacaoJoin = $temFuncionarioHorario
-    ? 'INNER JOIN funcionarios f ON f.id = ht.funcionario_id LEFT JOIN utilizadores u ON u.id = ht.utilizador_id'
-    : 'INNER JOIN utilizadores u ON u.id = ht.utilizador_id';
+if (fe_table_exists($conn, 'horarios_turno')) {
+    $associacaoNomeSelect = $temFuncionarioHorario ? 'f.nome AS funcionario_nome' : 'u.nome AS funcionario_nome';
+    $associacaoJoin = $temFuncionarioHorario
+        ? 'INNER JOIN funcionarios f ON f.id = ht.funcionario_id LEFT JOIN utilizadores u ON u.id = ht.utilizador_id'
+        : 'INNER JOIN utilizadores u ON u.id = ht.utilizador_id';
 
-$sql = "SELECT ht.id, ht.turno_id, ht.data_inicio, ht.data_fim, ht.dia_semana, ht.ativo,
-               $associacaoNomeSelect
-        FROM horarios_turno ht
-        $associacaoJoin
-        ORDER BY ht.data_inicio DESC, funcionario_nome ASC";
-$stmt = mysqli_prepare($conn, $sql);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-while ($row = mysqli_fetch_assoc($result)) {
-    $associacoes[(int) $row['turno_id']][] = $row;
+    $sql = "SELECT ht.id, ht.turno_id, ht.data_inicio, ht.data_fim, ht.dia_semana, ht.ativo,
+                   $associacaoNomeSelect
+            FROM horarios_turno ht
+            $associacaoJoin
+            ORDER BY ht.data_inicio DESC, funcionario_nome ASC";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    while ($row = mysqli_fetch_assoc($result)) {
+        $associacoes[(int) $row['turno_id']][] = $row;
+    }
+    mysqli_stmt_close($stmt);
 }
-mysqli_stmt_close($stmt);
 
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
@@ -306,7 +312,7 @@ $alertMessage = $_GET['message'] ?? '';
 
                     <?php if (!$temTabelaFuncionarios || !$temFuncionarioHorario): ?>
                         <div class="alert alert-warning" role="alert">
-                            Execute a migração <code>database/2026_05_15_lar_idosos_assiduidade.sql</code> para associar turnos diretamente a funcionários.
+                            Execute o schema <code>database/schema_completo.sql</code> para associar turnos diretamente a funcionários.
                         </div>
                     <?php endif; ?>
 
@@ -366,9 +372,6 @@ $alertMessage = $_GET['message'] ?? '';
                                                         <button type="button" class="btn btn-link btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalEditarTurno<?php echo (int) $turno['id']; ?>" title="Editar">
                                                             <i class="fa fa-edit"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-link btn-danger" data-bs-toggle="modal" data-bs-target="#modalRemoverTurno<?php echo (int) $turno['id']; ?>" title="Remover">
-                                                            <i class="fa fa-times"></i>
-                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -411,7 +414,6 @@ $alertMessage = $_GET['message'] ?? '';
         <div class="modal fade" id="modalEditarTurno<?php echo (int) $turno['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
-                    <input type="hidden" name="acao" value="editar">
                     <input type="hidden" name="id" value="<?php echo (int) $turno['id']; ?>">
                     <div class="modal-header border-0">
                         <h5 class="modal-title">Editar turno</h5>
@@ -423,7 +425,12 @@ $alertMessage = $_GET['message'] ?? '';
                         <?php include __DIR__ . '/turnos_form_campos.php'; ?>
                     </div>
                     <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-primary">Guardar alterações</button>
+                        <?php if ((int) $turno['total_associacoes'] === 0): ?>
+                            <button type="submit" name="acao" value="remover" class="btn btn-danger me-auto" formnovalidate onclick="return confirm('Tem a certeza que pretende remover este turno?');">Remover</button>
+                        <?php else: ?>
+                            <button type="button" class="btn btn-secondary me-auto" disabled>Remover</button>
+                        <?php endif; ?>
+                        <button type="submit" name="acao" value="editar" class="btn btn-primary">Guardar alterações</button>
                         <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
                     </div>
                 </form>
@@ -529,36 +536,6 @@ $alertMessage = $_GET['message'] ?? '';
             </div>
         </div>
 
-        <div class="modal fade" id="modalRemoverTurno<?php echo (int) $turno['id']; ?>" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <form method="post" class="modal-content">
-                    <input type="hidden" name="acao" value="remover">
-                    <input type="hidden" name="id" value="<?php echo (int) $turno['id']; ?>">
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Remover turno</h5>
-                        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <?php if ((int) $turno['total_associacoes'] > 0): ?>
-                            <p class="mb-0">
-                                Este turno tem <strong><?php echo (int) $turno['total_associacoes']; ?></strong>
-                                associação(ões), por isso não pode ser removido.
-                            </p>
-                        <?php else: ?>
-                            <p class="mb-0">Tem a certeza que pretende remover <strong><?php echo e($turno['nome']); ?></strong>?</p>
-                        <?php endif; ?>
-                    </div>
-                    <div class="modal-footer border-0">
-                        <?php if ((int) $turno['total_associacoes'] === 0): ?>
-                            <button type="submit" class="btn btn-danger">Remover</button>
-                        <?php endif; ?>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
     <?php endforeach; ?>
 
     <?php include 'includes/scripts.php'; ?>

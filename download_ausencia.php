@@ -26,9 +26,9 @@ if (!$pedido || empty($pedido['ficheiro_justificativo'])) {
 
 $ownerId = (int) $pedido['utilizador_id'];
 if ($ownerId !== (int) $utilizador['id']
-    && !ac_can($conn, $utilizador, 'ausencias.gerir')
-    && !ac_can($conn, $utilizador, 'justificacoes.validar')
-    && !ac_can($conn, $utilizador, 'ferias.gerir')) {
+    && !ac_can($conn, (int) $utilizador['id'], 'ausencias.gerir')
+    && !ac_can($conn, (int) $utilizador['id'], 'justificacoes.validar')
+    && !ac_can($conn, (int) $utilizador['id'], 'ferias.gerir')) {
     http_response_code(403);
     echo 'Sem autorizacao para aceder a este ficheiro.';
     exit;

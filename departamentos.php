@@ -289,11 +289,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                         <button type="button" class="btn btn-link btn-info btn-lg" data-bs-toggle="modal" data-bs-target="#modalGerirMembros<?php echo (int) $departamento['id']; ?>" title="Gerir membros">
                                                             <i class="fa fa-users"></i>
                                                         </button>
-                                                        <?php if ((int)$departamento['ativo'] === 1): ?>
-                                                            <button type="button" class="btn btn-link btn-warning btn-lg" data-bs-toggle="modal" data-bs-target="#modalDesativarEquipa<?php echo (int) $departamento['id']; ?>" title="Desativar">
-                                                                <i class="fa fa-user-times"></i>
-                                                            </button>
-                                                        <?php else: ?>
+                                                        <?php if ((int)$departamento['ativo'] !== 1): ?>
                                                             <form method="post" style="display:inline">
                                                                 <input type="hidden" name="acao" value="reativar">
                                                                 <input type="hidden" name="id" value="<?php echo (int) $departamento['id']; ?>">
@@ -357,7 +353,6 @@ $alertMessage = $_GET['message'] ?? '';
         <div class="modal fade" id="modalEditarEquipa<?php echo (int) $departamento['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
-                    <input type="hidden" name="acao" value="editar">
                     <input type="hidden" name="id" value="<?php echo (int) $departamento['id']; ?>">
                     <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                     <div class="modal-header border-0">
@@ -386,30 +381,10 @@ $alertMessage = $_GET['message'] ?? '';
                         </div>
                     </div>
                     <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-primary">Guardar alterações</button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div class="modal fade" id="modalDesativarEquipa<?php echo (int) $departamento['id']; ?>" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <form method="post" class="modal-content" onsubmit="return confirm('Tem a certeza que pretende desativar esta equipa?');">
-                    <input type="hidden" name="acao" value="desativar">
-                    <input type="hidden" name="id" value="<?php echo (int) $departamento['id']; ?>">
-                    <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Desativar equipa</h5>
-                        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-2">Vai desativar a equipa <strong><?php echo e($departamento['nome']); ?></strong>. Os registos históricos não serão alterados.</p>
-                    </div>
-                    <div class="modal-footer border-0">
-                        <button type="submit" class="btn btn-warning">Desativar</button>
+                        <?php if ((int)$departamento['ativo'] === 1): ?>
+                            <button type="submit" name="acao" value="desativar" class="btn btn-warning me-auto" formnovalidate onclick="return confirm('Tem a certeza que pretende desativar esta equipa?');">Desativar</button>
+                        <?php endif; ?>
+                        <button type="submit" name="acao" value="editar" class="btn btn-primary">Guardar alterações</button>
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                     </div>
                 </form>
@@ -429,6 +404,16 @@ $alertMessage = $_GET['message'] ?? '';
                     $funcs[] = $fr;
                 }
                 mysqli_stmt_close($s);
+
+                $funcsDisponiveis = [];
+                $s = mysqli_prepare($conn, 'SELECT id, nome, numero_mecanografico FROM funcionarios WHERE estado = "ativo" AND (equipa_id IS NULL OR equipa_id <> ?) ORDER BY nome ASC');
+                mysqli_stmt_bind_param($s, 'i', $departamento['id']);
+                mysqli_stmt_execute($s);
+                $resDisponiveis = mysqli_stmt_get_result($s);
+                while ($fr = mysqli_fetch_assoc($resDisponiveis)) {
+                    $funcsDisponiveis[] = $fr;
+                }
+                mysqli_stmt_close($s);
                 ?>
                 <form method="post" class="modal-content">
                     <input type="hidden" name="acao" value="mudar_equipa">
@@ -441,7 +426,7 @@ $alertMessage = $_GET['message'] ?? '';
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
-                            <label class="form-label">Selecionar funcionários</label>
+                            <label class="form-label">Membros atuais</label>
                             <div class="mb-2"><input type="checkbox" id="select_all_<?php echo (int)$departamento['id']; ?>"> Selecionar todos</div>
                             <div style="max-height:300px; overflow:auto;">
                                 <?php foreach ($funcs as $f): ?>
@@ -454,13 +439,27 @@ $alertMessage = $_GET['message'] ?? '';
                         </div>
 
                         <div class="mb-3">
+                            <label class="form-label">Adicionar funcionários a esta equipa</label>
+                            <div style="max-height:220px; overflow:auto;">
+                                <?php foreach ($funcsDisponiveis as $f): ?>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="funcionario_ids[]" value="<?php echo (int)$f['id']; ?>" id="add_f_<?php echo (int)$departamento['id']; ?>_<?php echo (int)$f['id']; ?>">
+                                        <label class="form-check-label" for="add_f_<?php echo (int)$departamento['id']; ?>_<?php echo (int)$f['id']; ?>"><?php echo e($f['nome'] . ' (' . ($f['numero_mecanografico'] ?: '-').')'); ?></label>
+                                    </div>
+                                <?php endforeach; ?>
+                                <?php if (empty($funcsDisponiveis)): ?>
+                                    <div class="text-muted">Sem funcionários disponíveis para adicionar.</div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label">Equipa destino *</label>
                             <select name="target_equipa_id" class="form-select" required>
-                                <option value="">Selecione...</option>
                                 <?php foreach ($equipasList as $eq): ?>
-                                    <?php if ((int)$eq['id'] !== (int)$departamento['id']): ?>
-                                        <option value="<?php echo (int)$eq['id']; ?>"><?php echo e($eq['nome']); ?></option>
-                                    <?php endif; ?>
+                                    <option value="<?php echo (int)$eq['id']; ?>" <?php echo (int)$eq['id'] === (int)$departamento['id'] ? 'selected' : ''; ?>>
+                                        <?php echo e($eq['nome']); ?><?php echo (int)$eq['id'] === (int)$departamento['id'] ? ' (esta equipa)' : ''; ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -519,4 +518,4 @@ $alertMessage = $_GET['message'] ?? '';
                 $('#modalGerirMembros<?php echo (int)$departamento['id']; ?>').find('input[name="funcionario_ids[]"]').prop('checked', checked);
             });
             <?php endforeach; ?>
-   
+
