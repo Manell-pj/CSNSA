@@ -67,6 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'corrigi
         header('Location: verificar_ponto.php?date='.urlencode($date).'&type=danger&message='.urlencode('Campos obrigatórios em falta'));
         exit;
     }
+    if (!in_array($novoTipo, ['entrada', 'saida', 'entrada_segundo_turno', 'saida_segundo_turno'], true)) {
+        header('Location: verificar_ponto.php?date='.urlencode($date).'&type=danger&message='.urlencode('Tipo de movimento invalido'));
+        exit;
+    }
+
     $dt = DateTime::createFromFormat('Y-m-d\TH:i', $novaData);
     if (!$dt) {
         header('Location: verificar_ponto.php?date='.urlencode($date).'&type=danger&message='.urlencode('Data/hora inválida'));
@@ -157,8 +162,6 @@ $alertMessage = $_GET['message'] ?? '';
                                             <div class="mb-3"><label class="form-label">Novo tipo</label><select name="novo_tipo" class="form-select" required>
                                                 <option value="entrada">Entrada</option>
                                                 <option value="saida">Saída</option>
-                                                <option value="inicio_pausa">Início pausa</option>
-                                                <option value="fim_pausa">Fim pausa</option>
                                                 <option value="entrada_segundo_turno">Entrada (2.º turno)</option>
                                                 <option value="saida_segundo_turno">Saída (2.º turno)</option>
                                             </select></div>

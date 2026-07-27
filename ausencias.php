@@ -1,10 +1,11 @@
-<?php
+\<?php
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/funcoes/ausencias_funcoes.php';
+require_once __DIR__ . '/funcoes/calcular_resumo_diario_assiduidade.php';
 
 function mes_nome_pt($mes)
 {
@@ -25,9 +26,9 @@ function mes_nome_pt($mes)
 
     return $nomes[(int) $mes] ?? '';
 }
-
+    
 $utilizadorSessao = require_login($conn);
-ac_require_any($conn, $utilizadorSessao, ['ausencias.gerir', 'ferias.gerir', 'justificacoes.validar']);
+ac_require_any($conn, $utilizadorSessao, ['ausencias.pedir', 'ausencias.gerir', 'ferias.gerir', 'justificacoes.validar']);
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
@@ -36,6 +37,8 @@ if (empty($_SESSION['csrf_token'])) {
 $utilizadorAutenticadoId = (int) ($_SESSION['utilizador_id'] ?? $_SESSION['user_id'] ?? 0);
 $utilizadorAutenticado = null;
 $temPermissaoAprovar = false;
+$temPermissaoPedir = ac_can_any($conn, $utilizadorAutenticadoId, ['ausencias.pedir', 'ausencias.gerir']);
+$pedidosSuportamFuncionario = ac_table_exists($conn, 'pedidos_ausencia') && ausencias_column_exists($conn, 'pedidos_ausencia', 'funcionario_id');
 
 if ($utilizadorAutenticadoId > 0) {
     $stmt = mysqli_prepare($conn, 'SELECT id, nome, email, estado FROM utilizadores WHERE id = ? LIMIT 1');
@@ -66,8 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'pedir') {
-        ac_require_permission($conn, $utilizadorSessao, 'ausencias.gerir');
+        ac_require_any($conn, $utilizadorSessao, ['ausencias.pedir', 'ausencias.gerir']);
         $tipoAusenciaId = (int) ($_POST['tipo_ausencia_id'] ?? 0);
+        $funcionarioId = $temPermissaoAprovar ? (int) ($_POST['funcionario_id'] ?? 0) : (int) (get_funcionario_id_from_utilizador($conn, $utilizadorAutenticadoId) ?? 0);
+        $utilizadorPedidoId = $utilizadorAutenticadoId;
         $dataInicio = trim($_POST['data_inicio'] ?? '');
         $dataFim = trim($_POST['data_fim'] ?? '');
         $motivo = trim($_POST['motivo'] ?? '');
@@ -78,6 +83,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($dataFim < $dataInicio) {
             redirect_with_message('danger', 'A data fim não pode ser anterior à data início.');
+        }
+
+        if ($funcionarioId > 0) {
+            $stmt = mysqli_prepare($conn, "SELECT id, utilizador_id FROM funcionarios WHERE id = ? AND estado = 'ativo' LIMIT 1");
+            mysqli_stmt_bind_param($stmt, 'i', $funcionarioId);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $funcionarioPedido = mysqli_fetch_assoc($result);
+            mysqli_stmt_close($stmt);
+
+            if (!$funcionarioPedido) {
+                redirect_with_message('danger', 'Funcionario invalido.');
+            }
+
+            if (!empty($funcionarioPedido['utilizador_id'])) {
+                $utilizadorPedidoId = (int) $funcionarioPedido['utilizador_id'];
+            }
+        } else {
+            $funcionarioId = null;
         }
 
         $stmt = mysqli_prepare($conn, 'SELECT id FROM tipos_ausencia WHERE id = ? AND ativo = 1 LIMIT 1');
@@ -100,7 +124,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Se for férias, tentar calcular dias reais usando a escala. Se não houver regras, manter cálculo por calendário.
             $computedNote = '';
             $calc = ['conflitos'=>[]];
-            $funcionarioId = get_funcionario_id_from_utilizador($conn, $utilizadorAutenticadoId);
             $stmtT = mysqli_prepare($conn, 'SELECT slug FROM tipos_ausencia WHERE id = ? LIMIT 1');
             mysqli_stmt_bind_param($stmtT, 'i', $tipoAusenciaId);
             mysqli_stmt_execute($stmtT);
@@ -109,7 +132,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_close($stmtT);
 
             if ($trow && $trow['slug'] === 'ferias') {
-                ac_require_permission($conn, $utilizadorSessao, 'ferias.gerir');
                 $calc = calcular_dias_ferias_por_escala($conn, $funcionarioId, $dataInicio, $dataFim);
                 if ($calc['computado_por_escala']) {
                     $totalDias = $calc['dias'];
@@ -122,10 +144,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            $stmt = mysqli_prepare($conn, "INSERT INTO pedidos_ausencia
-                (utilizador_id, tipo_ausencia_id, data_inicio, data_fim, total_dias, motivo, ficheiro_justificativo, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente')");
-            mysqli_stmt_bind_param($stmt, 'iissdss', $utilizadorAutenticadoId, $tipoAusenciaId, $dataInicio, $dataFim, $totalDias, $motivo, $anexo);
+            if ($pedidosSuportamFuncionario) {
+                $stmt = mysqli_prepare($conn, "INSERT INTO pedidos_ausencia
+                    (utilizador_id, funcionario_id, tipo_ausencia_id, data_inicio, data_fim, total_dias, motivo, ficheiro_justificativo, estado)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendente')");
+                mysqli_stmt_bind_param($stmt, 'iiissdss', $utilizadorPedidoId, $funcionarioId, $tipoAusenciaId, $dataInicio, $dataFim, $totalDias, $motivo, $anexo);
+            } else {
+                $stmt = mysqli_prepare($conn, "INSERT INTO pedidos_ausencia
+                    (utilizador_id, tipo_ausencia_id, data_inicio, data_fim, total_dias, motivo, ficheiro_justificativo, estado)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente')");
+                mysqli_stmt_bind_param($stmt, 'iissdss', $utilizadorPedidoId, $tipoAusenciaId, $dataInicio, $dataFim, $totalDias, $motivo, $anexo);
+            }
             mysqli_stmt_execute($stmt);
             $insertId = mysqli_insert_id($conn);
             mysqli_stmt_close($stmt);
@@ -148,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'aprovar' || $acao === 'recusar') {
-        ac_require_permission($conn, $utilizadorSessao, 'justificacoes.validar');
+        ac_require_any($conn, $utilizadorSessao, ['justificacoes.validar', 'ferias.gerir']);
         if (!$temPermissaoAprovar) {
             redirect_with_message('danger', 'Não tem permissão para aprovar ou recusar pedidos.');
         }
@@ -182,15 +211,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pedidoRow = mysqli_fetch_assoc($rp);
             mysqli_stmt_close($stmtP);
 
-            if ($pedidoRow && $pedidoRow['slug'] === 'ferias') {
+            if ($pedidoRow) {
                 // Obter funcionário.
-                $stmtF = mysqli_prepare($conn, 'SELECT id, utilizador_id FROM funcionarios WHERE utilizador_id = ? LIMIT 1');
-                mysqli_stmt_bind_param($stmtF, 'i', $pedidoRow['utilizador_id']);
-                mysqli_stmt_execute($stmtF);
-                $rf = mysqli_stmt_get_result($stmtF);
-                $funcRow = mysqli_fetch_assoc($rf);
-                mysqli_stmt_close($stmtF);
-                $funcionarioId = $funcRow['id'] ?? null;
+                $funcionarioId = ($pedidosSuportamFuncionario && !empty($pedidoRow['funcionario_id'])) ? (int) $pedidoRow['funcionario_id'] : null;
+                if (!$funcionarioId) {
+                    $stmtF = mysqli_prepare($conn, 'SELECT id, utilizador_id FROM funcionarios WHERE utilizador_id = ? LIMIT 1');
+                    mysqli_stmt_bind_param($stmtF, 'i', $pedidoRow['utilizador_id']);
+                    mysqli_stmt_execute($stmtF);
+                    $rf = mysqli_stmt_get_result($stmtF);
+                    $funcRow = mysqli_fetch_assoc($rf);
+                    mysqli_stmt_close($stmtF);
+                    $funcionarioId = $funcRow['id'] ?? null;
+                }
 
                 $pedidoAusenciaId = (int) $pedidoRow['id'];
                 $funcionarioIdParam = $funcionarioId ? (int) $funcionarioId : null;
@@ -234,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($stmtIns);
 
                 // Garantir tabela de histórico existe.
+                if ($pedidoRow['slug'] === 'ferias' && $funcionarioId) {
                 $tabelaEscalaAprovacao = ac_table_exists($conn, 'escala_funcionarios') ? 'escala_funcionarios' : (ac_table_exists($conn, 'escala_mensal_dias') ? 'escala_mensal_dias' : null);
                 $usarHistoricoEscalaAntiga = $tabelaEscalaAprovacao === 'escala_mensal_dias';
 
@@ -279,6 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $cur->modify('+1 day');
                 }
+                }
              }
          }
 
@@ -298,27 +332,45 @@ while ($row = mysqli_fetch_assoc($result)) {
 }
 mysqli_stmt_close($stmt);
 
+$destinatariosAusencia = carregar_destinatarios_ausencia($conn);
 $pedidos = [];
 
 if ($utilizadorAutenticado) {
     if ($temPermissaoAprovar) {
-        $sql = "SELECT pa.*, ta.nome AS tipo_nome, u.nome AS utilizador_nome, aprovador.nome AS aprovador_nome
+        $joinFuncionario = $pedidosSuportamFuncionario ? 'LEFT JOIN funcionarios f ON f.id = pa.funcionario_id' : 'LEFT JOIN funcionarios f ON f.utilizador_id = pa.utilizador_id';
+        $sql = "SELECT pa.*, ta.nome AS tipo_nome, u.nome AS utilizador_nome, f.nome AS funcionario_nome, aprovador.nome AS aprovador_nome
             FROM pedidos_ausencia pa
             INNER JOIN tipos_ausencia ta ON ta.id = pa.tipo_ausencia_id
             INNER JOIN utilizadores u ON u.id = pa.utilizador_id
+            $joinFuncionario
             LEFT JOIN utilizadores aprovador ON aprovador.id = pa.aprovado_por
             ORDER BY pa.created_at DESC, pa.id DESC";
         $stmt = mysqli_prepare($conn, $sql);
     } else {
-        $sql = "SELECT pa.*, ta.nome AS tipo_nome, u.nome AS utilizador_nome, aprovador.nome AS aprovador_nome
+        $funcionarioProprioId = get_funcionario_id_from_utilizador($conn, $utilizadorAutenticadoId);
+        $joinFuncionario = $pedidosSuportamFuncionario ? 'LEFT JOIN funcionarios f ON f.id = pa.funcionario_id' : 'LEFT JOIN funcionarios f ON f.utilizador_id = pa.utilizador_id';
+        $whereProprio = $pedidosSuportamFuncionario ? 'pa.utilizador_id = ? OR (? IS NOT NULL AND pa.funcionario_id = ?)' : 'pa.utilizador_id = ?';
+        $sql = "SELECT pa.*, ta.nome AS tipo_nome, u.nome AS utilizador_nome, f.nome AS funcionario_nome, aprovador.nome AS aprovador_nome
             FROM pedidos_ausencia pa
             INNER JOIN tipos_ausencia ta ON ta.id = pa.tipo_ausencia_id
             INNER JOIN utilizadores u ON u.id = pa.utilizador_id
+            $joinFuncionario
             LEFT JOIN utilizadores aprovador ON aprovador.id = pa.aprovado_por
-            WHERE pa.utilizador_id = ?
+            WHERE $whereProprio
             ORDER BY pa.created_at DESC, pa.id DESC";
         $stmt = mysqli_prepare($conn, $sql);
-        mysqli_stmt_bind_param($stmt, 'i', $utilizadorAutenticadoId);
+        if (!$stmt) {
+            redirect_with_message('danger', 'Erro ao preparar historico de pedidos: ' . mysqli_error($conn));
+        }
+        if ($pedidosSuportamFuncionario) {
+            mysqli_stmt_bind_param($stmt, 'iii', $utilizadorAutenticadoId, $funcionarioProprioId, $funcionarioProprioId);
+        } else {
+            mysqli_stmt_bind_param($stmt, 'i', $utilizadorAutenticadoId);
+        }
+    }
+
+    if (!$stmt) {
+        redirect_with_message('danger', 'Erro ao preparar historico de pedidos: ' . mysqli_error($conn));
     }
 
     mysqli_stmt_execute($stmt);
@@ -330,11 +382,22 @@ if ($utilizadorAutenticado) {
 }
 
 // Férias futuras (aprovadas) - área própria
-$feriasFuturas = [];
-$stmt = mysqli_prepare($conn, "SELECT pa.id, pa.utilizador_id, u.nome AS utilizador_nome, pa.data_inicio, pa.data_fim, pa.total_dias FROM pedidos_ausencia pa INNER JOIN utilizadores u ON u.id = pa.utilizador_id WHERE pa.estado = 'aprovado' AND pa.tipo_ausencia_id = (SELECT id FROM tipos_ausencia WHERE slug = 'ferias' LIMIT 1) AND pa.data_inicio > CURDATE() ORDER BY pa.data_inicio ASC");
+$ausenciasAprovadas = [];
+$joinFuncionarioAprovadas = $pedidosSuportamFuncionario ? 'LEFT JOIN funcionarios f ON f.id = pa.funcionario_id' : 'LEFT JOIN funcionarios f ON f.utilizador_id = pa.utilizador_id';
+$stmt = mysqli_prepare($conn, "SELECT pa.id, pa.utilizador_id, u.nome AS utilizador_nome, f.nome AS funcionario_nome, ta.nome AS tipo_nome, pa.data_inicio, pa.data_fim, pa.total_dias
+    FROM pedidos_ausencia pa
+    INNER JOIN tipos_ausencia ta ON ta.id = pa.tipo_ausencia_id
+    INNER JOIN utilizadores u ON u.id = pa.utilizador_id
+    $joinFuncionarioAprovadas
+    WHERE pa.estado = 'aprovado'
+    ORDER BY pa.data_inicio DESC, pa.id DESC
+    LIMIT 200");
+if (!$stmt) {
+    redirect_with_message('danger', 'Erro ao preparar ausencias aprovadas: ' . mysqli_error($conn));
+}
 mysqli_stmt_execute($stmt);
 $resf = mysqli_stmt_get_result($stmt);
-while ($r = mysqli_fetch_assoc($resf)) { $feriasFuturas[] = $r; }
+while ($r = mysqli_fetch_assoc($resf)) { $ausenciasAprovadas[] = $r; }
 mysqli_stmt_close($stmt);
 
 $equipasRelatorio = [];
@@ -378,7 +441,26 @@ if (isset($_GET['relatorio']) && $temPermissaoAprovar) {
             $relatorio['erro'] = 'Ainda não existem resumos diários para gerar o relatório. Calcule a assiduidade do período primeiro.';
         } else {
             // agregação usando resumo_diario_assiduidade (recomenda-se executar o calculador primeiro)
-            $sql = "SELECT r.funcionario_id, f.nome AS funcionario_nome, SUM(r.falta) AS dias_falta, SUM(r.minutos_previstos - r.minutos_trabalhados) AS minutos_falta, SUM(r.minutos_atraso) AS minutos_atraso, SUM(r.minutos_extra) AS minutos_extra FROM resumo_diario_assiduidade r INNER JOIN funcionarios f ON f.id = r.funcionario_id WHERE r.data BETWEEN ? AND ?";
+            $errosCalculo = [];
+            $cursorCalculo = new DateTime($start);
+            $fimCalculo = new DateTime($end);
+            while ($cursorCalculo <= $fimCalculo) {
+                try {
+                    $resultadoCalculo = calcular_resumo_diario_assiduidade($conn, $cursorCalculo->format('Y-m-d'));
+                    if (!empty($resultadoCalculo['erros'])) {
+                        $errosCalculo = array_merge($errosCalculo, $resultadoCalculo['erros']);
+                    }
+                } catch (Throwable $e) {
+                    $errosCalculo[] = $cursorCalculo->format('Y-m-d') . ': ' . $e->getMessage();
+                }
+                $cursorCalculo->modify('+1 day');
+            }
+
+            if (!empty($errosCalculo)) {
+                $relatorio['aviso'] = 'Alguns dias nao foram recalculados: ' . implode(' | ', array_slice($errosCalculo, 0, 5));
+            }
+
+            $sql = "SELECT r.funcionario_id, f.nome AS funcionario_nome, SUM(r.falta) AS dias_falta, SUM(GREATEST(r.minutos_previstos - r.minutos_trabalhados, 0)) AS minutos_falta, SUM(r.minutos_atraso) AS minutos_atraso, SUM(r.minutos_extra) AS minutos_extra FROM resumo_diario_assiduidade r INNER JOIN funcionarios f ON f.id = r.funcionario_id WHERE r.data BETWEEN ? AND ?";
             $params = [$start, $end];
             $types = 'ss';
             if (!empty($_GET['equipa_id'])) {
@@ -456,39 +538,15 @@ $alertMessage = $_GET['message'] ?? '';
                         </ul>
                     </div>
                     <div class="card mt-3">
-                        <div class="card-header d-flex align-items-center">
-                            <h4 class="card-title">Férias futuras aprovadas</h4>
-                        </div>
-                        <div class="card-body">
-                            <?php if (empty($feriasFuturas)): ?>
-                                <div class="alert alert-info">Sem férias futuras aprovadas.</div>
-                            <?php else: ?>
-                                <div class="table-responsive">
-                                    <table class="table table-striped">
-                                        <thead><tr><th>Colaborador</th><th>Início</th><th>Fim</th><th>Dias</th></tr></thead>
-                                        <tbody>
-                                        <?php foreach ($feriasFuturas as $f): ?>
-                                            <tr>
-                                                <td><?php echo e($f['utilizador_nome']); ?></td>
-                                                <td><?php echo e(date('d/m/Y', strtotime($f['data_inicio']))); ?></td>
-                                                <td><?php echo e(date('d/m/Y', strtotime($f['data_fim']))); ?></td>
-                                                <td><?php echo e($f['total_dias']); ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <div class="card mt-3">
                         <div class="card-header">
                             <h4 class="card-title">Relatório de ausências</h4>
                         </div>
                         <div class="card-body">
                             <?php if (!empty($relatorio['erro'])): ?>
                                 <div class="alert alert-danger"><?php echo e($relatorio['erro']); ?></div>
+                            <?php endif; ?>
+                            <?php if (!empty($relatorio['aviso'])): ?>
+                                <div class="alert alert-warning"><?php echo e($relatorio['aviso']); ?></div>
                             <?php endif; ?>
                             <form method="get" class="row g-2 align-items-end mb-3">
                                 <input type="hidden" name="relatorio" value="1">
@@ -573,7 +631,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <span class="badge badge-primary ms-2">Aprovação</span>
                                     <?php endif; ?>
                                 </h4>
-                                <button class="btn btn-primary btn-round ms-auto" data-bs-toggle="modal" data-bs-target="#modalPedirAusencia" <?php echo !$utilizadorAutenticado ? 'disabled' : ''; ?>>
+                                <button class="btn btn-primary btn-round ms-auto" data-bs-toggle="modal" data-bs-target="#modalPedirAusencia" <?php echo (!$utilizadorAutenticado || !$temPermissaoPedir) ? 'disabled' : ''; ?>>
                                     <i class="fa fa-plus"></i>
                                     Novo pedido
                                 </button>
@@ -585,7 +643,7 @@ $alertMessage = $_GET['message'] ?? '';
                                     <thead>
                                         <tr>
                                             <?php if ($temPermissaoAprovar): ?>
-                                                <th>Colaborador</th>
+                                                <th>Funcionario / Utilizador</th>
                                             <?php endif; ?>
                                             <th>Tipo</th>
                                             <th>Início</th>
@@ -602,7 +660,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <?php foreach ($pedidos as $pedido): ?>
                                             <tr>
                                                 <?php if ($temPermissaoAprovar): ?>
-                                                    <td><?php echo e($pedido['utilizador_nome']); ?></td>
+                                                    <td><?php echo e($pedido['funcionario_nome'] ?: $pedido['utilizador_nome']); ?></td>
                                                 <?php endif; ?>
                                                 <td><?php echo e($pedido['tipo_nome']); ?></td>
                                                 <td><?php echo e(date('d/m/Y', strtotime($pedido['data_inicio']))); ?></td>
@@ -643,6 +701,34 @@ $alertMessage = $_GET['message'] ?? '';
                             </div>
                         </div>
                     </div>
+
+                    <div class="card mt-3">
+                        <div class="card-header d-flex align-items-center">
+                            <h4 class="card-title">Ferias / Justificacoes aprovadas</h4>
+                        </div>
+                        <div class="card-body">
+                            <?php if (empty($ausenciasAprovadas)): ?>
+                                <div class="alert alert-info">Sem ausencias aprovadas.</div>
+                            <?php else: ?>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead><tr><th>Funcionario / Utilizador</th><th>Tipo</th><th>Inicio</th><th>Fim</th><th>Dias</th></tr></thead>
+                                        <tbody>
+                                        <?php foreach ($ausenciasAprovadas as $ausenciaAprovada): ?>
+                                            <tr>
+                                                <td><?php echo e($ausenciaAprovada['funcionario_nome'] ?: $ausenciaAprovada['utilizador_nome']); ?></td>
+                                                <td><?php echo e($ausenciaAprovada['tipo_nome']); ?></td>
+                                                <td><?php echo e(date('d/m/Y', strtotime($ausenciaAprovada['data_inicio']))); ?></td>
+                                                <td><?php echo e(date('d/m/Y', strtotime($ausenciaAprovada['data_fim']))); ?></td>
+                                                <td><?php echo e($ausenciaAprovada['total_dias']); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -663,6 +749,17 @@ $alertMessage = $_GET['message'] ?? '';
                 </div>
                 <div class="modal-body">
                     <div class="row">
+                        <?php if ($temPermissaoAprovar): ?>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Funcionario</label>
+                            <select name="funcionario_id" class="form-select">
+                                <option value="">Associar ao utilizador autenticado</option>
+                                <?php foreach ($destinatariosAusencia as $destinatarioAusencia): ?>
+                                    <option value="<?php echo (int) $destinatarioAusencia['funcionario_id']; ?>"><?php echo e($destinatarioAusencia['nome']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Tipo *</label>
                             <select name="tipo_ausencia_id" class="form-select" required>

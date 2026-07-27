@@ -136,6 +136,7 @@ function ac_permission_label($codigo, $fallback = '')
         'ponto.consultar' => 'Consultar ponto',
         'ponto.corrigir' => 'Corrigir ponto',
         'ocorrencias.validar' => 'Validar ocorrências',
+        'ausencias.pedir' => 'Pedir ausências',
         'ausencias.gerir' => 'Gerir ausências',
         'justificacoes.validar' => 'Validar justificações',
         'ferias.gerir' => 'Gerir férias',

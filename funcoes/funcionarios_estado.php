@@ -32,12 +32,8 @@ function fe_estado_trabalho($funcionario)
 
     $ultimoTipo = $funcionario['ultimo_tipo'] ?? null;
 
-    if (in_array($ultimoTipo, ['entrada', 'fim_pausa'], true)) {
+    if (in_array($ultimoTipo, ['entrada', 'entrada_segundo_turno', 'fim_pausa'], true)) {
         return 'a_trabalhar';
-    }
-
-    if ($ultimoTipo === 'inicio_pausa') {
-        return 'em_pausa';
     }
 
     return 'nao_trabalhar';
@@ -47,7 +43,6 @@ function fe_estado_label($estado)
 {
     $labels = [
         'a_trabalhar' => 'A trabalhar',
-        'em_pausa' => 'Em pausa',
         'nao_trabalhar' => 'Não está a trabalhar',
         'inativo' => 'Inativo',
     ];
@@ -59,7 +54,6 @@ function fe_estado_badge($estado)
 {
     $classes = [
         'a_trabalhar' => 'success',
-        'em_pausa' => 'warning',
         'nao_trabalhar' => 'secondary',
         'inativo' => 'danger',
     ];
@@ -72,6 +66,8 @@ function fe_movimento_label($tipo)
     $labels = [
         'entrada' => 'Entrada',
         'saida' => 'Saída',
+        'entrada_segundo_turno' => 'Entrada (2.º turno)',
+        'saida_segundo_turno' => 'Saída (2.º turno)',
         'inicio_pausa' => 'Início de pausa',
         'fim_pausa' => 'Fim de pausa',
     ];
@@ -180,7 +176,6 @@ function fe_totais_vazios()
         'total' => 0,
         'ativos' => 0,
         'a_trabalhar' => 0,
-        'em_pausa' => 0,
         'nao_trabalhar' => 0,
         'inativo' => 0,
     ];

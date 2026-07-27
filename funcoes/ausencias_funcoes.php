@@ -55,24 +55,6 @@ function ausencias_column_exists($conn, $table, $column)
     return (int) ($row['total'] ?? 0) > 0;
 }
 
-function garantir_estrutura_ausencias($conn)
-{
-    if (ac_table_exists($conn, 'pedidos_ausencia') && !ausencias_column_exists($conn, 'pedidos_ausencia', 'funcionario_id')) {
-        mysqli_query($conn, 'ALTER TABLE pedidos_ausencia ADD COLUMN funcionario_id INT UNSIGNED DEFAULT NULL AFTER utilizador_id');
-        mysqli_query($conn, 'ALTER TABLE pedidos_ausencia ADD INDEX idx_pedidos_funcionario (funcionario_id)');
-    }
-
-    if (ac_table_exists($conn, 'permissoes')) {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO permissoes (codigo, nome, descricao) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE nome = VALUES(nome), descricao = VALUES(descricao)');
-        $codigo = 'ausencias.pedir';
-        $nome = 'Pedir ausencias';
-        $descricao = 'Criar pedidos de ausencia proprios';
-        mysqli_stmt_bind_param($stmt, 'sss', $codigo, $nome, $descricao);
-        mysqli_stmt_execute($stmt);
-        mysqli_stmt_close($stmt);
-    }
-}
-
 function guardar_anexo_seguro($file)
 {
     if (!isset($file) || $file['error'] === UPLOAD_ERR_NO_FILE) {
@@ -234,8 +216,23 @@ function calcular_dias_ferias_por_escala($conn, $funcionario_id, $dataInicio, $d
     $out['computado_por_escala'] = true;
 
     // detectar conflitos com outros pedidos/ferias
-    $stmtC = mysqli_prepare($conn, 'SELECT id, tipo_ausencia_id, estado, data_inicio, data_fim FROM pedidos_ausencia WHERE utilizador_id = (SELECT utilizador_id FROM funcionarios WHERE id = ? LIMIT 1) AND data_inicio <= ? AND data_fim >= ? AND estado IN ("pendente","aprovado")');
-    mysqli_stmt_bind_param($stmtC, 'iss', $funcionario_id, $dataFim, $dataInicio);
+    if (ausencias_column_exists($conn, 'pedidos_ausencia', 'funcionario_id')) {
+        $stmtC = mysqli_prepare($conn, 'SELECT id, tipo_ausencia_id, estado, data_inicio, data_fim
+            FROM pedidos_ausencia
+            WHERE (funcionario_id = ? OR (funcionario_id IS NULL AND utilizador_id = (SELECT utilizador_id FROM funcionarios WHERE id = ? LIMIT 1)))
+              AND data_inicio <= ?
+              AND data_fim >= ?
+              AND estado IN ("pendente","aprovado")');
+        mysqli_stmt_bind_param($stmtC, 'iiss', $funcionario_id, $funcionario_id, $dataFim, $dataInicio);
+    } else {
+        $stmtC = mysqli_prepare($conn, 'SELECT id, tipo_ausencia_id, estado, data_inicio, data_fim
+            FROM pedidos_ausencia
+            WHERE utilizador_id = (SELECT utilizador_id FROM funcionarios WHERE id = ? LIMIT 1)
+              AND data_inicio <= ?
+              AND data_fim >= ?
+              AND estado IN ("pendente","aprovado")');
+        mysqli_stmt_bind_param($stmtC, 'iss', $funcionario_id, $dataFim, $dataInicio);
+    }
     mysqli_stmt_execute($stmtC);
     $rc = mysqli_stmt_get_result($stmtC);
     while ($cr = mysqli_fetch_assoc($rc)) {

@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
         $dataHoraSql = null;
         $dataReferencia = null;
 
-        $tiposPermitidos = ['entrada', 'saida', 'inicio_pausa', 'fim_pausa', 'entrada_segundo_turno', 'saida_segundo_turno'];
+        $tiposPermitidos = ['entrada', 'saida', 'entrada_segundo_turno', 'saida_segundo_turno'];
 
         if ($funcionarioId <= 0 || !in_array($tipo, $tiposPermitidos, true) || $dataHora === '') {
             redirect_with_message('danger', 'Preencha funcionário, movimento e data/hora.');
@@ -333,8 +333,6 @@ $alertMessage = $_GET['message'] ?? '';
                                                 <option value="">Selecionar movimento</option>
                                                 <option value="entrada">Entrada</option>
                                                 <option value="saida">Saída</option>
-                                                <option value="inicio_pausa">Início de pausa</option>
-                                                <option value="fim_pausa">Fim de pausa</option>
                                             </select>
                                             <div class="invalid-feedback">Selecione o movimento.</div>
                                         </div>

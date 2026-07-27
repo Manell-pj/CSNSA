@@ -435,10 +435,28 @@ function calcular_resumo_diario_assiduidade($conn, $data, $funcionarioId = null)
                 $minutosAusenciaJustificada = $minutosPrevistos;
             } else {
                 // procurar pedidos_ausencia aprovados que cubram esta data e que sejam do tipo que exige justificação
-                $stmtJ = mysqli_prepare($conn, 'SELECT pa.id, ta.slug FROM pedidos_ausencia pa INNER JOIN tipos_ausencia ta ON ta.id = pa.tipo_ausencia_id WHERE pa.utilizador_id = ? AND pa.estado = "aprovado" AND pa.data_inicio <= ? AND pa.data_fim >= ? LIMIT 1');
+                $temFuncionarioPedidoAusencia = assiduidade_coluna_existe($conn, 'pedidos_ausencia', 'funcionario_id');
+                $sqlJustificacao = 'SELECT pa.id, ta.slug
+                    FROM pedidos_ausencia pa
+                    INNER JOIN tipos_ausencia ta ON ta.id = pa.tipo_ausencia_id
+                    WHERE pa.estado = "aprovado"
+                      AND pa.data_inicio <= ?
+                      AND pa.data_fim >= ?';
+                if ($temFuncionarioPedidoAusencia) {
+                    $sqlJustificacao .= ' AND (pa.funcionario_id = ? OR (pa.funcionario_id IS NULL AND pa.utilizador_id = ?))';
+                } else {
+                    $sqlJustificacao .= ' AND pa.utilizador_id = ?';
+                }
+                $sqlJustificacao .= ' LIMIT 1';
+                $stmtJ = mysqli_prepare($conn, $sqlJustificacao);
                 $fidParam = $linha['utilizador_id'] === null ? 0 : (int) $linha['utilizador_id'];
+                $funcionarioParam = (int) $linha['funcionario_id'];
                 $dataParam = $data;
-                mysqli_stmt_bind_param($stmtJ, 'iss', $fidParam, $dataParam, $dataParam);
+                if ($temFuncionarioPedidoAusencia) {
+                    mysqli_stmt_bind_param($stmtJ, 'ssii', $dataParam, $dataParam, $funcionarioParam, $fidParam);
+                } else {
+                    mysqli_stmt_bind_param($stmtJ, 'ssi', $dataParam, $dataParam, $fidParam);
+                }
                 mysqli_stmt_execute($stmtJ);
                 $rj = mysqli_stmt_get_result($stmtJ);
                 $pj = mysqli_fetch_assoc($rj);

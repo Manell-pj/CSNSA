@@ -1,8 +1,6 @@
 <?php
 $nome = $turno['nome'] ?? '';
 $codigo = $turno['codigo'] ?? '';
-$inicioPausa = $turno['inicio_pausa'] ?? '';
-$fimPausa = $turno['fim_pausa'] ?? '';
 $toleranciaAtraso = isset($turno['tolerancia_entrada_min']) ? (int) $turno['tolerancia_entrada_min'] : 0;
 $toleranciaSaida = isset($turno['tolerancia_saida_min']) ? (int) $turno['tolerancia_saida_min'] : 0;
 $horasPrevistas = isset($turno['horas_previstas']) ? $turno['horas_previstas'] : 8.00;
@@ -32,14 +30,6 @@ $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) s
     <div class="col-md-6 mb-3">
         <label class="form-label">Código</label>
         <input type="text" name="codigo" class="form-control" value="<?php echo e($codigo); ?>">
-    </div>
-    <div class="col-md-3 mb-3">
-        <label class="form-label">Início pausa</label>
-        <input type="time" name="inicio_pausa" class="form-control" value="<?php echo e($inicioPausa); ?>">
-    </div>
-    <div class="col-md-3 mb-3">
-        <label class="form-label">Fim pausa</label>
-        <input type="time" name="fim_pausa" class="form-control" value="<?php echo e($fimPausa); ?>">
     </div>
     <div class="col-md-3 mb-3">
         <label class="form-label">Tolerância de atraso (min)</label>
