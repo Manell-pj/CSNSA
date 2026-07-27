@@ -2,12 +2,11 @@
 $formId = 'funcionarioWizard' . (int) ($funcionarioForm['id'] ?? 0);
 $entidadePadrao = 'Centro Social Nossa Senhora Auxiliador';
 $estadoCivilOpcoes = function_exists('estado_civil_opcoes') ? estado_civil_opcoes() : [
-    'Solteiro/a',
-    'Casado/a',
-    'Unido/a de facto',
-    'Divorciado/a',
-    'Separado/a',
-    'Viúvo/a',
+    'Solteiro',
+    'Casado',
+    'Divorciado',
+    'Separado',
+    'Viúvo',
 ];
 $funcionarioForm = array_merge([
     'entidade' => $entidadePadrao,
@@ -104,7 +103,20 @@ $funcionarioForm = array_merge([
     'estado' => 'ativo',
 ], $funcionarioForm ?? []);
 
+$estadoCivilLegado = [
+    'Solteiro/a' => 'Solteiro',
+    'Casado/a' => 'Casado',
+    'Divorciado/a' => 'Divorciado',
+    'Separado/a' => 'Separado',
+    'Viúvo/a' => 'Viúvo',
+    'Viuvo/a' => 'Viúvo',
+];
+
 foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
+    if (isset($estadoCivilLegado[$funcionarioForm[$estadoCivilCampo] ?? ''])) {
+        $funcionarioForm[$estadoCivilCampo] = $estadoCivilLegado[$funcionarioForm[$estadoCivilCampo]];
+    }
+
     if (($funcionarioForm[$estadoCivilCampo] ?? '') !== '' && !in_array($funcionarioForm[$estadoCivilCampo], $estadoCivilOpcoes, true)) {
         $estadoCivilOpcoes[] = $funcionarioForm[$estadoCivilCampo];
     }
@@ -131,7 +143,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Número mec *</label>
-                <input type="text" name="numero_mecanografico" class="form-control" value="<?php echo e($funcionarioForm['numero_mecanografico']); ?>" required>
+                <input type="text" name="numero_mecanografico" class="form-control js-numero-mecanografico" value="<?php echo e($funcionarioForm['numero_mecanografico']); ?>" required>
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Data *</label>
@@ -153,7 +165,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label">Data de validade *</label>
-                <input type="date" name="data_validade_doc" class="form-control" value="<?php echo e($funcionarioForm['data_validade_doc']); ?>" required>
+                <input type="date" name="data_validade_doc" class="form-control js-date-not-past" value="<?php echo e($funcionarioForm['data_validade_doc']); ?>" min="<?php echo date('Y-m-d'); ?>" required>
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label">Local emissão</label>
@@ -189,7 +201,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label">Data de Nascimento *</label>
-                <input type="date" name="data_nascimento" class="form-control" value="<?php echo e($funcionarioForm['data_nascimento']); ?>" required>
+                <input type="date" name="data_nascimento" class="form-control js-date-before-today" value="<?php echo e($funcionarioForm['data_nascimento']); ?>" max="<?php echo date('Y-m-d', strtotime('-1 day')); ?>" required>
             </div>
         </div>
     </div>
@@ -237,7 +249,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
                             </div>
                             <div class="col-md-2 mb-3">
                                 <label class="form-label">Taxa de I.R.S.</label>
-                                <input type="number" step="0.01" name="novo_tipo_contrato_taxa_irs" class="form-control">
+                                <input type="text" name="novo_tipo_contrato_taxa_irs" class="form-control js-decimal-only" inputmode="decimal" pattern="\d+([,.]\d+)?">
                             </div>
                             <div class="col-md-12">
                                 <button type="submit" name="acao" value="criar_tipo_contrato" class="btn btn-secondary btn-sm" formnovalidate>Guardar tipo de contrato</button>
@@ -256,7 +268,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Taxa de I.R.S.</label>
-                <input type="number" step="0.01" name="tipo_contrato_taxa_irs" class="form-control js-contrato-taxa" value="<?php echo e($funcionarioForm['tipo_contrato_taxa_irs']); ?>">
+                <input type="text" name="tipo_contrato_taxa_irs" class="form-control js-contrato-taxa js-decimal-only" value="<?php echo e($funcionarioForm['tipo_contrato_taxa_irs']); ?>" inputmode="decimal" pattern="\d+([,.]\d+)?">
             </div>
         </div>
         <h6 class="fw-bold mb-3 mt-2">Morada</h6>
@@ -279,11 +291,11 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Telefone</label>
-                <input type="text" name="telefone" class="form-control" value="<?php echo e($funcionarioForm['telefone']); ?>">
+                <input type="text" name="telefone" class="form-control js-digits-only" value="<?php echo e($funcionarioForm['telefone']); ?>" inputmode="numeric" maxlength="9" pattern="\d{0,9}">
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Telemóvel</label>
-                <input type="text" name="telemovel" class="form-control" value="<?php echo e($funcionarioForm['telemovel']); ?>">
+                <input type="text" name="telemovel" class="form-control js-digits-only" value="<?php echo e($funcionarioForm['telemovel']); ?>" inputmode="numeric" maxlength="9" pattern="\d{0,9}">
             </div>
         </div>
     </div>
@@ -327,13 +339,13 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-2 mb-3 d-flex align-items-end">
                 <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="conjugue" id="conjugue<?php echo e($formId); ?>" <?php echo (int) $funcionarioForm['conjugue'] === 1 ? 'checked' : ''; ?>>
+                    <input class="form-check-input js-conjugue-toggle" type="checkbox" name="conjugue" id="conjugue<?php echo e($formId); ?>" <?php echo (int) $funcionarioForm['conjugue'] === 1 ? 'checked' : ''; ?>>
                     <label class="form-check-label" for="conjugue<?php echo e($formId); ?>">Cônjuge</label>
                 </div>
             </div>
             <div class="col-md-4 mb-3">
                 <label class="form-label">NIF Cônjuge</label>
-                <input type="text" name="nif_conjugue" class="form-control" value="<?php echo e($funcionarioForm['nif_conjugue']); ?>">
+                <input type="text" name="nif_conjugue" class="form-control js-nif-conjugue" value="<?php echo e($funcionarioForm['nif_conjugue']); ?>" <?php echo (int) $funcionarioForm['conjugue'] === 1 ? '' : 'disabled'; ?>>
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Residência I.R.S</label>
@@ -404,7 +416,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
         <h6 class="fw-bold mb-3">Segurança social</h6>
         <div class="row">
             <div class="col-md-4 mb-3"><label class="form-label">Cod *</label><input type="text" name="seguranca_social_codigo" class="form-control" value="<?php echo e($funcionarioForm['seguranca_social_codigo']); ?>" required></div>
-            <div class="col-md-8 mb-3"><label class="form-label">N. Beneficiário</label><input type="text" name="seguranca_social_numero_beneficiario" class="form-control" value="<?php echo e($funcionarioForm['seguranca_social_numero_beneficiario']); ?>"></div>
+            <div class="col-md-8 mb-3"><label class="form-label">N. Beneficiário</label><input type="text" name="seguranca_social_numero_beneficiario" class="form-control js-digits-only" value="<?php echo e($funcionarioForm['seguranca_social_numero_beneficiario']); ?>" inputmode="numeric" maxlength="11" pattern="\d{11}"></div>
         </div>
     </div>
 
@@ -425,7 +437,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             <div class="col-md-2 mb-3"><label class="form-label">Categoria</label><input type="text" name="carta_conducao_categoria_1" class="form-control" value="<?php echo e($funcionarioForm['carta_conducao_categoria_1']); ?>"></div>
             <div class="col-md-2 mb-3"><label class="form-label">Categoria</label><input type="text" name="carta_conducao_categoria_2" class="form-control" value="<?php echo e($funcionarioForm['carta_conducao_categoria_2']); ?>"></div>
             <div class="col-md-2 mb-3"><label class="form-label">Data de início</label><input type="date" name="carta_conducao_data_inicio" class="form-control" value="<?php echo e($funcionarioForm['carta_conducao_data_inicio']); ?>"></div>
-            <div class="col-md-3 mb-3"><label class="form-label">Data de Validade</label><input type="date" name="carta_conducao_data_validade" class="form-control" value="<?php echo e($funcionarioForm['carta_conducao_data_validade']); ?>"></div>
+            <div class="col-md-3 mb-3"><label class="form-label">Data de Validade</label><input type="date" name="carta_conducao_data_validade" class="form-control js-date-not-past" value="<?php echo e($funcionarioForm['carta_conducao_data_validade']); ?>" min="<?php echo date('Y-m-d'); ?>"></div>
         </div>
     </div>
 
@@ -484,7 +496,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
                 </div>
             <?php endif; ?>
             <div class="col-md-3 mb-3"><label class="form-label">Estado</label><select name="estado" class="form-select"><option value="ativo" <?php echo $funcionarioForm['estado'] === 'ativo' ? 'selected' : ''; ?>>Ativo</option><option value="suspenso" <?php echo $funcionarioForm['estado'] === 'suspenso' ? 'selected' : ''; ?>>Suspenso</option><option value="inativo" <?php echo $funcionarioForm['estado'] === 'inativo' ? 'selected' : ''; ?>>Inativo</option></select></div>
-            <div class="col-md-3 mb-3"><label class="form-label">PIN ponto</label><input type="text" name="pin_ponto" class="form-control" value="<?php echo e($funcionarioForm['pin_ponto']); ?>"></div>
+            <div class="col-md-3 mb-3"><label class="form-label">PIN ponto</label><input type="text" name="pin_ponto" class="form-control js-pin-ponto" value="<?php echo e($funcionarioForm['pin_ponto']); ?>"></div>
             <div class="col-md-3 mb-3"><label class="form-label">Código cartão</label><input type="text" name="codigo_cartao" class="form-control" value="<?php echo e($funcionarioForm['codigo_cartao']); ?>"></div>
             <div class="col-md-3 mb-3"><label class="form-label">Código biométrico</label><input type="text" name="codigo_biometrico" class="form-control" value="<?php echo e($funcionarioForm['codigo_biometrico']); ?>"></div>
             <div class="col-md-4 mb-3"><label class="form-label">Data-base diuturnidade</label><input type="date" name="diuturnidade_data_base" class="form-control" value="<?php echo e($funcionarioForm['diuturnidade_data_base']); ?>"></div>

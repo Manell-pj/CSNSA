@@ -43,6 +43,36 @@ function pode_aprovar($conn, $utilizadorId)
     return ac_can_any($conn, $utilizadorId, ['justificacoes.validar', 'ferias.gerir']);
 }
 
+function ausencias_column_exists($conn, $table, $column)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS total FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+    mysqli_stmt_bind_param($stmt, 'ss', $table, $column);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    return (int) ($row['total'] ?? 0) > 0;
+}
+
+function garantir_estrutura_ausencias($conn)
+{
+    if (ac_table_exists($conn, 'pedidos_ausencia') && !ausencias_column_exists($conn, 'pedidos_ausencia', 'funcionario_id')) {
+        mysqli_query($conn, 'ALTER TABLE pedidos_ausencia ADD COLUMN funcionario_id INT UNSIGNED DEFAULT NULL AFTER utilizador_id');
+        mysqli_query($conn, 'ALTER TABLE pedidos_ausencia ADD INDEX idx_pedidos_funcionario (funcionario_id)');
+    }
+
+    if (ac_table_exists($conn, 'permissoes')) {
+        $stmt = mysqli_prepare($conn, 'INSERT INTO permissoes (codigo, nome, descricao) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE nome = VALUES(nome), descricao = VALUES(descricao)');
+        $codigo = 'ausencias.pedir';
+        $nome = 'Pedir ausencias';
+        $descricao = 'Criar pedidos de ausencia proprios';
+        mysqli_stmt_bind_param($stmt, 'sss', $codigo, $nome, $descricao);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+    }
+}
+
 function guardar_anexo_seguro($file)
 {
     if (!isset($file) || $file['error'] === UPLOAD_ERR_NO_FILE) {
@@ -127,6 +157,48 @@ function get_funcionario_id_from_utilizador($conn, $utilizadorId)
     $r = mysqli_fetch_assoc($res);
     mysqli_stmt_close($stmt);
     return $r['id'] ?? null;
+}
+
+function get_utilizador_id_from_funcionario($conn, $funcionarioId)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT utilizador_id FROM funcionarios WHERE id = ? LIMIT 1');
+    mysqli_stmt_bind_param($stmt, 'i', $funcionarioId);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    $r = mysqli_fetch_assoc($res);
+    mysqli_stmt_close($stmt);
+
+    return $r['utilizador_id'] ?? null;
+}
+
+function carregar_destinatarios_ausencia($conn)
+{
+    $destinatarios = [];
+
+    if (ac_table_exists($conn, 'funcionarios')) {
+        $sql = "SELECT f.id AS funcionario_id, f.nome AS funcionario_nome, f.numero_mecanografico, f.utilizador_id, u.nome AS utilizador_nome
+            FROM funcionarios f
+            LEFT JOIN utilizadores u ON u.id = f.utilizador_id
+            WHERE f.estado = 'ativo'
+            ORDER BY f.nome ASC";
+        $res = mysqli_query($conn, $sql);
+        while ($res && $row = mysqli_fetch_assoc($res)) {
+            $nome = $row['funcionario_nome'];
+            if (!empty($row['numero_mecanografico'])) {
+                $nome .= ' (' . $row['numero_mecanografico'] . ')';
+            }
+            if (!empty($row['utilizador_nome']) && $row['utilizador_nome'] !== $row['funcionario_nome']) {
+                $nome .= ' - utilizador: ' . $row['utilizador_nome'];
+            }
+            $destinatarios[] = [
+                'funcionario_id' => (int) $row['funcionario_id'],
+                'utilizador_id' => $row['utilizador_id'] === null ? null : (int) $row['utilizador_id'],
+                'nome' => $nome,
+            ];
+        }
+    }
+
+    return $destinatarios;
 }
 
 function calcular_dias_ferias_por_escala($conn, $funcionario_id, $dataInicio, $dataFim)

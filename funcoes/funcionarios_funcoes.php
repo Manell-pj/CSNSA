@@ -34,13 +34,34 @@ function normalizar_codigo_postal($value)
 function estado_civil_opcoes()
 {
     return [
-        'Solteiro/a',
-        'Casado/a',
-        'Unido/a de facto',
-        'Divorciado/a',
-        'Separado/a',
-        'Viúvo/a',
+        'Solteiro',
+        'Casado',
+        'Divorciado',
+        'Separado',
+        'Viúvo',
     ];
+}
+
+function normalizar_estado_civil($value)
+{
+    $value = trim((string) $value);
+    $legacy = [
+        'Solteiro/a' => 'Solteiro',
+        'Casado/a' => 'Casado',
+        'Divorciado/a' => 'Divorciado',
+        'Separado/a' => 'Separado',
+        'Viuvo/a' => 'Viúvo',
+    ];
+
+    if (isset($legacy[$value])) {
+        return $legacy[$value];
+    }
+
+    if (preg_match('/^Vi.*vo\/a$/u', $value) === 1) {
+        return 'Viúvo';
+    }
+
+    return $value;
 }
 
 function get_post_value($key)
@@ -73,6 +94,24 @@ function nullable_decimal($value)
     }
 
     return (float) str_replace(',', '.', $value);
+}
+
+function is_decimal_value($value)
+{
+    $value = trim((string) $value);
+    return $value === '' || preg_match('/^\d+(?:[,.]\d+)?$/', $value) === 1;
+}
+
+function has_max_digits($value, $maxDigits)
+{
+    $value = trim((string) $value);
+    return $value === '' || preg_match('/^\d{1,' . (int) $maxDigits . '}$/', $value) === 1;
+}
+
+function has_exact_digits($value, $digits)
+{
+    $value = trim((string) $value);
+    return $value === '' || preg_match('/^\d{' . (int) $digits . '}$/', $value) === 1;
 }
 
 function ensure_column($conn, $table, $column, $definition)

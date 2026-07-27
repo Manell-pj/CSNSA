@@ -54,6 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $codigo = nullable_text($_POST['novo_tipo_contrato_codigo'] ?? '');
         $nome = get_post_value('novo_tipo_contrato_nome');
         $tipoRendimento = nullable_text($_POST['novo_tipo_contrato_rendimento'] ?? '');
+        if (!is_decimal_value($_POST['novo_tipo_contrato_taxa_irs'] ?? '')) {
+            redirect_with_message('danger', 'A taxa de I.R.S. so pode conter numeros.');
+        }
         $taxaIrs = nullable_decimal($_POST['novo_tipo_contrato_taxa_irs'] ?? '');
 
         if ($nome === '') {
@@ -83,7 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $numeroMecanografico = nullable_text($_POST['numero_mecanografico'] ?? '');
         $dataFicha = nullable_date($_POST['data_ficha'] ?? '');
         $email = nullable_text($_POST['email'] ?? '');
-        $telefone = nullable_text($_POST['telefone'] ?? '');
+        $telefoneRaw = $_POST['telefone'] ?? '';
+        $telemovelRaw = $_POST['telemovel'] ?? '';
+        $telefone = nullable_text($telefoneRaw);
         $funcao = nullable_text($_POST['funcao'] ?? '');
         $dataNascimento = nullable_date($_POST['data_nascimento'] ?? '');
         $categoria = nullable_text($_POST['categoria_profissional'] ?? '');
@@ -99,14 +104,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cargaHoraria = nullable_decimal($_POST['carga_horaria_semanal'] ?? '40') ?? 40.0;
         $horasMes = nullable_decimal($_POST['horas_mes'] ?? '');
         $salarioMensal = nullable_decimal($_POST['salario_mensal'] ?? '');
-        $pinPonto = nullable_text($_POST['pin_ponto'] ?? '');
+        $pinPonto = nullable_text($_POST['pin_ponto'] ?? '') ?: $numeroMecanografico;
         $codigoCartao = nullable_text($_POST['codigo_cartao'] ?? '');
         $codigoBiometrico = nullable_text($_POST['codigo_biometrico'] ?? '');
         $estado = get_post_value('estado') ?: 'ativo';
         $observacoes = nullable_text($_POST['observacoes'] ?? '');
         $conjugue = isset($_POST['conjugue']) ? 1 : 0;
-        $estadoCivil = nullable_text($_POST['estado_civil'] ?? '');
-        $irsEstadoCivil = nullable_text($_POST['irs_estado_civil'] ?? '') ?: $estadoCivil;
+        $estadoCivil = nullable_text(normalizar_estado_civil($_POST['estado_civil'] ?? ''));
+        $irsEstadoCivil = nullable_text(normalizar_estado_civil($_POST['irs_estado_civil'] ?? '')) ?: $estadoCivil;
         $codigoPostal = normalizar_codigo_postal($_POST['codigo_postal'] ?? '');
 
         $tipoContratoSelecionado = null;
@@ -149,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'localidade' => nullable_text($_POST['localidade'] ?? ''),
             'codigo_pais' => nullable_text($_POST['codigo_pais'] ?? ''),
             'codigo_postal' => $codigoPostal,
-            'telemovel' => nullable_text($_POST['telemovel'] ?? ''),
+            'telemovel' => nullable_text($telemovelRaw),
             'data_admissao' => $dataAdmissao,
             'codigo_admissao' => nullable_text($_POST['codigo_admissao'] ?? ''),
             'data_cessacao' => $dataCessacao,
@@ -157,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'nif' => nullable_text($_POST['nif'] ?? ''),
             'irs_estado_civil' => $irsEstadoCivil,
             'conjugue' => $conjugue,
-            'nif_conjugue' => nullable_text($_POST['nif_conjugue'] ?? ''),
+            'nif_conjugue' => $conjugue ? nullable_text($_POST['nif_conjugue'] ?? '') : null,
             'residencia_irs' => nullable_text($_POST['residencia_irs'] ?? ''),
             'beneficio_fiscal' => nullable_text($_POST['beneficio_fiscal'] ?? ''),
             'numero_filhos' => nullable_int($_POST['numero_filhos'] ?? ''),
@@ -269,6 +274,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($codigoPostal !== null && !preg_match('/^\d{4}-\d{3}$/', $codigoPostal)) {
             redirect_with_message('danger', 'Introduza um código postal válido no formato 0000-000.');
+        }
+
+        $estadoCivilOpcoes = estado_civil_opcoes();
+        if (!in_array($estadoCivil, $estadoCivilOpcoes, true) || !in_array($irsEstadoCivil, $estadoCivilOpcoes, true)) {
+            redirect_with_message('danger', 'Selecione um estado civil valido.');
+        }
+
+        $hoje = date('Y-m-d');
+        if ($funcionarioDados['data_validade_doc'] !== null && $funcionarioDados['data_validade_doc'] < $hoje) {
+            redirect_with_message('danger', 'A data de validade nao pode ser anterior a data atual.');
+        }
+
+        if ($funcionarioDados['carta_conducao_data_validade'] !== null && $funcionarioDados['carta_conducao_data_validade'] < $hoje) {
+            redirect_with_message('danger', 'A data de validade da carta de conducao nao pode ser anterior a data atual.');
+        }
+
+        if ($dataNascimento !== null && $dataNascimento >= $hoje) {
+            redirect_with_message('danger', 'A data de nascimento tem de ser anterior a data atual.');
+        }
+
+        if (!has_max_digits($telefoneRaw, 9) || !has_max_digits($telemovelRaw, 9)) {
+            redirect_with_message('danger', 'Telefone e telemovel so podem ter ate 9 digitos.');
+        }
+
+        if (!is_decimal_value($_POST['tipo_contrato_taxa_irs'] ?? '') || !is_decimal_value($_POST['novo_tipo_contrato_taxa_irs'] ?? '')) {
+            redirect_with_message('danger', 'A taxa de I.R.S. so pode conter numeros.');
+        }
+
+        if (!has_exact_digits($_POST['seguranca_social_numero_beneficiario'] ?? '', 11)) {
+            redirect_with_message('danger', 'O numero de beneficiario tem de ter exatamente 11 digitos.');
         }
 
         if ($cargaHoraria <= 0) {
@@ -383,11 +418,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $hasMotivoCol = mysqli_num_rows($res2) > 0;
 
             if ($hasDataCol && $hasMotivoCol) {
+                $estadoAtivo = 'ativo';
                 $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET estado = ?, data_desativacao = NULL, motivo_desativacao = NULL WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'si', $estadoAtivo = 'ativo', $id);
+                mysqli_stmt_bind_param($stmt, 'si', $estadoAtivo, $id);
             } else {
+                $estadoAtivo = 'ativo';
                 $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET estado = ? WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'si', $estadoAtivo = 'ativo', $id);
+                mysqli_stmt_bind_param($stmt, 'si', $estadoAtivo, $id);
             }
 
             mysqli_stmt_execute($stmt);
@@ -712,9 +749,146 @@ $alertMessage = $_GET['message'] ?? '';
                 return valid;
             }
 
+            function getToday() {
+                return new Date().toISOString().slice(0, 10);
+            }
+
+            function filterDigits($input, maxLength) {
+                var digits = String($input.val() || '').replace(/\D/g, '');
+                if (maxLength) {
+                    digits = digits.slice(0, maxLength);
+                }
+                $input.val(digits);
+            }
+
+            function filterDecimal($input) {
+                var value = String($input.val() || '').replace(/[^\d,.]/g, '');
+                var parts = value.split(/[,.]/);
+                if (parts.length > 1) {
+                    value = parts.shift() + '.' + parts.join('');
+                }
+                $input.val(value);
+            }
+
+            function toggleNifConjugue($wizard) {
+                var checked = $wizard.find('.js-conjugue-toggle').is(':checked');
+                $wizard.find('.js-nif-conjugue').prop('disabled', !checked);
+            }
+
+            function fillContrato($select) {
+                var $option = $select.find('option:selected');
+                var $wizard = $select.closest('.funcionario-wizard');
+                $wizard.find('input[name="tipo_contrato"]').val($option.val() ? $option.text().trim() : '');
+                $wizard.find('.js-contrato-codigo').val($option.data('codigo') || '');
+                $wizard.find('.js-contrato-rendimento').val($option.data('rendimento') || '');
+                $wizard.find('.js-contrato-taxa').val($option.data('taxa') || '');
+            }
+
+            function fillPinPonto($wizard) {
+                var $numero = $wizard.find('.js-numero-mecanografico');
+                var $pin = $wizard.find('.js-pin-ponto');
+                var previous = String($numero.data('previous') || '');
+                var pin = String($pin.val() || '');
+
+                if (pin === '' || pin === previous) {
+                    $pin.val($numero.val());
+                }
+
+                $numero.data('previous', $numero.val());
+            }
+
+            function focusNextControl(current) {
+                var $form = $(current).closest('form');
+                var $controls = $form.find('input, select, textarea')
+                    .filter(':visible:not(:disabled)')
+                    .filter(function () {
+                        return $(this).attr('type') !== 'hidden';
+                    });
+                var index = $controls.index(current);
+                var next = $controls.get(index + 1);
+
+                if (next) {
+                    next.focus();
+                } else {
+                    $(current).closest('.funcionario-wizard').find('.wizard-next').trigger('click');
+                }
+            }
+
+            var draftKey = 'funcionario_add_draft_v1';
+            var pendingCreateKey = 'funcionario_add_pending_create_v1';
+
+            function serializeDraft($form) {
+                var data = {};
+                $form.find('input[name], select[name], textarea[name]').each(function () {
+                    var name = this.name;
+                    if (['acao', 'csrf_token'].indexOf(name) !== -1 || name.indexOf('novo_tipo_contrato_') === 0) {
+                        return;
+                    }
+
+                    if (this.type === 'checkbox') {
+                        data[name] = this.checked ? '1' : '0';
+                    } else {
+                        data[name] = $(this).val();
+                    }
+                });
+                data.__step = Number($form.find('.funcionario-wizard').data('step') || 0);
+                return data;
+            }
+
+            function saveDraft($form) {
+                try {
+                    sessionStorage.setItem(draftKey, JSON.stringify(serializeDraft($form)));
+                } catch (e) {}
+            }
+
+            function restoreDraft($form) {
+                var raw = null;
+                try {
+                    raw = sessionStorage.getItem(draftKey);
+                } catch (e) {}
+                if (!raw) {
+                    return;
+                }
+
+                var data = {};
+                try {
+                    data = JSON.parse(raw);
+                } catch (e) {
+                    return;
+                }
+
+                Object.keys(data).forEach(function (name) {
+                    if (name === '__step') {
+                        return;
+                    }
+
+                    var $fields = $form.find('[name="' + name + '"]');
+                    $fields.each(function () {
+                        if (this.type === 'checkbox') {
+                            this.checked = data[name] === '1';
+                        } else {
+                            $(this).val(data[name]);
+                        }
+                    });
+                });
+
+                var $wizard = $form.find('.funcionario-wizard');
+                $wizard.data('step', Math.max(0, Number(data.__step || 0)));
+                toggleNifConjugue($wizard);
+                if ($wizard.find('.js-tipo-contrato').val()) {
+                    fillContrato($wizard.find('.js-tipo-contrato'));
+                }
+                refreshWizard($wizard);
+            }
+
             $('.funcionario-wizard').each(function () {
                 var $wizard = $(this);
                 $wizard.data('step', 0);
+                $wizard.find('.js-numero-mecanografico').data('previous', $wizard.find('.js-numero-mecanografico').val());
+                toggleNifConjugue($wizard);
+                if ($wizard.find('.js-tipo-contrato').val()) {
+                    fillContrato($wizard.find('.js-tipo-contrato'));
+                }
                 refreshWizard($wizard);
             });
 
@@ -723,6 +897,9 @@ $alertMessage = $_GET['message'] ?? '';
                 var index = Number($wizard.data('step') || 0);
                 $wizard.data('step', Math.max(0, index - 1));
                 refreshWizard($wizard);
+                if ($wizard.closest('#modalCriarFuncionario').length) {
+                    saveDraft($wizard.closest('form'));
+                }
             });
 
             $(document).on('click', '.wizard-next', function () {
@@ -741,15 +918,13 @@ $alertMessage = $_GET['message'] ?? '';
 
                 $wizard.data('step', index + 1);
                 refreshWizard($wizard);
+                if ($wizard.closest('#modalCriarFuncionario').length) {
+                    saveDraft($wizard.closest('form'));
+                }
             });
 
             $(document).on('change', '.js-tipo-contrato', function () {
-                var $option = $(this).find('option:selected');
-                var $wizard = $(this).closest('.funcionario-wizard');
-                $wizard.find('input[name="tipo_contrato"]').val($option.text().trim());
-                $wizard.find('.js-contrato-codigo').val($option.data('codigo') || '');
-                $wizard.find('.js-contrato-rendimento').val($option.data('rendimento') || '');
-                $wizard.find('.js-contrato-taxa').val($option.data('taxa') || '');
+                fillContrato($(this));
             });
 
             $(document).on('change', '.js-estado-civil', function () {
@@ -768,6 +943,54 @@ $alertMessage = $_GET['message'] ?? '';
                     digits = digits.slice(0, 4) + '-' + digits.slice(4);
                 }
                 $(this).val(digits);
+            });
+
+            $(document).on('input', '.js-digits-only', function () {
+                filterDigits($(this), Number($(this).attr('maxlength') || 0));
+            });
+
+            $(document).on('input', '.js-decimal-only', function () {
+                filterDecimal($(this));
+            });
+
+            $(document).on('input', '.js-numero-mecanografico', function () {
+                fillPinPonto($(this).closest('.funcionario-wizard'));
+            });
+
+            $(document).on('change', '.js-conjugue-toggle', function () {
+                toggleNifConjugue($(this).closest('.funcionario-wizard'));
+            });
+
+            $(document).on('change', '.js-date-not-past', function () {
+                if ($(this).val() && $(this).val() < getToday()) {
+                    this.setCustomValidity('A data de validade nao pode ser anterior a data atual.');
+                } else {
+                    this.setCustomValidity('');
+                }
+            });
+
+            $(document).on('change', '.js-date-before-today', function () {
+                if ($(this).val() && $(this).val() >= getToday()) {
+                    this.setCustomValidity('A data de nascimento tem de ser anterior a data atual.');
+                } else {
+                    this.setCustomValidity('');
+                }
+            });
+
+            $(document).on('keydown', '.funcionario-wizard input, .funcionario-wizard select', function (event) {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+
+                event.preventDefault();
+                focusNextControl(this);
+            });
+
+            var $criarFuncionarioForm = $('#modalCriarFuncionario form');
+            restoreDraft($criarFuncionarioForm);
+
+            $criarFuncionarioForm.on('input change', 'input[name], select[name], textarea[name]', function () {
+                saveDraft($criarFuncionarioForm);
             });
 
             $('.needs-validation').on('submit', function (event) {
@@ -802,6 +1025,12 @@ $alertMessage = $_GET['message'] ?? '';
                     }, 50);
                 }
 
+                if (firstInvalidPage === -1 && $form.closest('#modalCriarFuncionario').length) {
+                    try {
+                        sessionStorage.setItem(pendingCreateKey, '1');
+                    } catch (e) {}
+                }
+
                 $form.addClass('was-validated');
             });
 
@@ -811,6 +1040,15 @@ $alertMessage = $_GET['message'] ?? '';
             });
 
             var params = new URLSearchParams(window.location.search);
+            if (params.get('type') === 'success' && params.get('modal') !== 'adicionar_funcionario') {
+                try {
+                    if (sessionStorage.getItem(pendingCreateKey) === '1') {
+                        sessionStorage.removeItem(draftKey);
+                        sessionStorage.removeItem(pendingCreateKey);
+                    }
+                } catch (e) {}
+            }
+
             if (params.get('modal') === 'adicionar_funcionario') {
                 var $modal = $('#modalCriarFuncionario');
                 var step = parseInt(params.get('step') || '0', 10);
