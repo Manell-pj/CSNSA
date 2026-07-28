@@ -16,7 +16,6 @@ $allowedPages = [
     'relatorios_horas.php',
     'utilizadores.php',
     'permissoes.php',
-    'logs.php',
     'login.php',
     'primeiro_utilizador.php',
     'verificar_ponto.php',

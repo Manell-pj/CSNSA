@@ -146,7 +146,6 @@ function ac_permission_label($codigo, $fallback = '')
         'relatorios.exportar' => 'Exportar relatórios',
         'utilizadores.gerir' => 'Gerir utilizadores',
         'permissoes.gerir' => 'Gerir permissões',
-        'logs.consultar' => 'Consultar logs',
         'notificacoes.ver' => 'Ver notificações',
         'notificacoes.gerir' => 'Gerir notificações',
         'funcionarios.ver_idade' => 'Ver idade dos funcionários',

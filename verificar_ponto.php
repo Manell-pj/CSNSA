@@ -1,7 +1,10 @@
 <?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/funcionarios_estado.php';
+require_once __DIR__ . '/funcoes/ponto_funcoes.php';
 require_once __DIR__ . '/funcoes/verificar_ponto_funcoes.php';
+require_once __DIR__ . '/funcoes/calcular_resumo_diario_assiduidade.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'ponto.consultar');
@@ -78,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'corrigi
         exit;
     }
     $novaSql = $dt->format('Y-m-d H:i:s');
+    $novaDataReferencia = $dt->format('Y-m-d');
 
     // load original
     $s = mysqli_prepare($conn, 'SELECT * FROM registos_ponto WHERE id = ?');
@@ -91,24 +95,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'corrigi
         exit;
     }
 
+    $dataReferenciaOriginal = $orig['data_referencia'] ?? date('Y-m-d', strtotime($orig['data_hora']));
+    $funcionarioIdOriginal = (int) ($orig['funcionario_id'] ?? 0);
+
+    if (ponto_existe_movimento_mesma_hora($conn, $funcionarioIdOriginal, $novaSql, $registoId)) {
+        header('Location: verificar_ponto.php?date='.urlencode($date).'&type=danger&message='.urlencode('Já existe outro movimento registado para este funcionário à mesma hora'));
+        exit;
+    }
+
     // insert log
     if (fe_table_exists($conn, 'registos_ponto_logs')) {
         $dados_antigos = json_encode($orig);
-        $dados_novos = json_encode(['tipo'=>$novoTipo,'data_hora'=>$novaSql]);
-        $l = mysqli_prepare($conn, 'INSERT INTO registos_ponto_logs (registo_ponto_id, operacao, dados_antigos, dados_novos, utilizador_id, motivo) VALUES (?, "correcao", ?, ?, ?, ?)');
+        $dados_novos = json_encode(['tipo'=>$novoTipo,'data_hora'=>$novaSql,'data_referencia'=>$novaDataReferencia]);
         $uid = $utilizadorSessao['id'];
-        mysqli_stmt_bind_param($l, 'issis', $registoId, $dados_antigos, $dados_novos, $uid, $motivo);
-        mysqli_stmt_execute($l);
-        mysqli_stmt_close($l);
+        if (fe_column_exists($conn, 'registos_ponto_logs', 'motivo')) {
+            $l = mysqli_prepare($conn, 'INSERT INTO registos_ponto_logs (registo_ponto_id, operacao, dados_antigos, dados_novos, utilizador_id, motivo) VALUES (?, "correcao", ?, ?, ?, ?)');
+            if ($l) {
+                mysqli_stmt_bind_param($l, 'issis', $registoId, $dados_antigos, $dados_novos, $uid, $motivo);
+            }
+        } else {
+            $l = mysqli_prepare($conn, 'INSERT INTO registos_ponto_logs (registo_ponto_id, operacao, dados_antigos, dados_novos, utilizador_id) VALUES (?, "correcao", ?, ?, ?)');
+            if ($l) {
+                mysqli_stmt_bind_param($l, 'issi', $registoId, $dados_antigos, $dados_novos, $uid);
+            }
+        }
+
+        if ($l) {
+            mysqli_stmt_execute($l);
+            mysqli_stmt_close($l);
+        }
     }
 
     // update original record but keep audit fields
-    $u = mysqli_prepare($conn, 'UPDATE registos_ponto SET tipo = ?, data_hora = ?, motivo_correcao = ?, atualizado_por = ?, registo_manual = 1 WHERE id = ?');
-    mysqli_stmt_bind_param($u, 'ssisi', $novoTipo, $novaSql, $motivo, $utilizadorSessao['id'], $registoId);
+    if (fe_column_exists($conn, 'registos_ponto', 'data_referencia')) {
+        $u = mysqli_prepare($conn, 'UPDATE registos_ponto SET tipo = ?, data_hora = ?, data_referencia = ?, motivo_correcao = ?, atualizado_por = ?, registo_manual = 1 WHERE id = ?');
+        mysqli_stmt_bind_param($u, 'ssssii', $novoTipo, $novaSql, $novaDataReferencia, $motivo, $utilizadorSessao['id'], $registoId);
+    } else {
+        $u = mysqli_prepare($conn, 'UPDATE registos_ponto SET tipo = ?, data_hora = ?, motivo_correcao = ?, atualizado_por = ?, registo_manual = 1 WHERE id = ?');
+        mysqli_stmt_bind_param($u, 'ssisi', $novoTipo, $novaSql, $motivo, $utilizadorSessao['id'], $registoId);
+    }
     mysqli_stmt_execute($u);
     mysqli_stmt_close($u);
 
-    header('Location: verificar_ponto.php?date='.urlencode($date).'&type=success&message='.urlencode('Registo corrigido e auditado'));
+    $resumoAtualizado = verificar_ponto_recalcular_resumos($conn, $funcionarioIdOriginal, $dataReferenciaOriginal, $novaDataReferencia);
+    $mensagem = $resumoAtualizado
+        ? 'Registo corrigido e auditado'
+        : 'Registo corrigido e auditado. O resumo de assiduidade será atualizado posteriormente.';
+
+    header('Location: verificar_ponto.php?date='.urlencode($date).'&type=success&message='.urlencode($mensagem));
     exit;
 }
 

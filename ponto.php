@@ -3,6 +3,7 @@ require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
 require_once __DIR__ . '/funcoes/ponto_funcoes.php';
+require_once __DIR__ . '/funcoes/calcular_resumo_diario_assiduidade.php';
 
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'ponto.consultar');
@@ -157,6 +158,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
     }
 
     $temDataReferencia = fe_column_exists($conn, 'registos_ponto', 'data_referencia');
+    if ($acao !== 'registar_por_codigo') {
+        ponto_validar_movimento_cronologico($conn, $funcionarioId, $tipo, $dataHoraSql);
+    } else {
     // Basic validations: prevent consecutive same movement types and exit without entry
     $stmtLast = mysqli_prepare($conn, 'SELECT tipo FROM registos_ponto WHERE funcionario_id = ? ORDER BY data_hora DESC, id DESC LIMIT 1');
     mysqli_stmt_bind_param($stmtLast, 'i', $funcionarioId);
@@ -190,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
             redirect_with_message('danger', 'Saída inválida: não existe entrada anterior registada.');
         }
     }
+    }
 
     // insert record and preserve format; origem: dispositivo when via codigo, else manual
     $origem = ($acao === 'registar_por_codigo') ? 'dispositivo' : 'manual';
@@ -221,11 +226,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
         mysqli_stmt_close($l);
     }
 
-    redirect_with_message('success', movimento_label($tipo) . ' registada com sucesso.');
+    $resumoAtualizado = ponto_atualizar_resumo_assiduidade($conn, $dataReferencia, $funcionarioId);
+    $mensagem = movimento_label($tipo) . ' registada com sucesso.';
+    if (!$resumoAtualizado) {
+        $mensagem .= ' O resumo de assiduidade será atualizado posteriormente.';
+    }
+
+    redirect_with_message('success', $mensagem, ['data' => $dataReferencia]);
 }
 
 $funcionarios = [];
 $registos = [];
+$dataFiltro = $_GET['data'] ?? date('Y-m-d');
+$dtFiltro = DateTime::createFromFormat('Y-m-d', $dataFiltro);
+if (!$dtFiltro || $dtFiltro->format('Y-m-d') !== $dataFiltro) {
+    $dataFiltro = date('Y-m-d');
+    $dtFiltro = new DateTime($dataFiltro);
+}
+$inicioFiltro = $dataFiltro . ' 00:00:00';
+$fimFiltro = $dataFiltro . ' 23:59:59';
+$dataFiltroLabel = $dtFiltro->format('d/m/Y');
 
 if (empty($missingTables)) {
     $stmt = mysqli_prepare($conn, "SELECT id, numero_mecanografico, nome, funcao, codigo_biometrico
@@ -245,8 +265,9 @@ if ($temFuncionarioRegisto) {
                f.nome AS funcionario_nome, f.numero_mecanografico
         FROM registos_ponto rp
         INNER JOIN funcionarios f ON f.id = rp.funcionario_id
-        WHERE DATE(rp.data_hora) = CURDATE()
+        WHERE rp.data_hora BETWEEN ? AND ?
         ORDER BY rp.data_hora DESC, rp.id DESC");
+    mysqli_stmt_bind_param($stmt, 'ss', $inicioFiltro, $fimFiltro);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($result)) {
@@ -357,7 +378,17 @@ $alertMessage = $_GET['message'] ?? '';
                         <div class="col-md-8">
                             <div class="card">
                                 <div class="card-header">
-                                    <h4 class="card-title">Registos de hoje</h4>
+                                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+                                        <h4 class="card-title mb-0">Registos de <?php echo e($dataFiltroLabel); ?></h4>
+                                        <form method="get" class="d-flex flex-column flex-sm-row gap-2 align-items-sm-center">
+                                            <input type="date" name="data" class="form-control" value="<?php echo e($dataFiltro); ?>">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fa fa-search"></i>
+                                                Ver
+                                            </button>
+                                            <a href="ponto.php" class="btn btn-outline-secondary">Hoje</a>
+                                        </form>
+                                    </div>
                                 </div>
                                 <div class="card-body">
                                     <div class="table-responsive">

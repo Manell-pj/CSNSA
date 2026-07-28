@@ -1,5 +1,7 @@
 ﻿<?php
 
+require_once __DIR__ . '/calcular_resumo_diario_assiduidade.php';
+
 function escala_mensal_e($value)
 {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
@@ -45,7 +47,7 @@ function escala_mensal_month_name($month)
     $months = [
         1 => 'Janeiro',
         2 => 'Fevereiro',
-        3 => 'Marco',
+        3 => 'Março',
         4 => 'Abril',
         5 => 'Maio',
         6 => 'Junho',
@@ -83,7 +85,7 @@ function escala_mensal_tipo_label($tipo)
         'ferias' => 'Férias',
         'falta' => 'Falta',
         'baixa' => 'Baixa',
-        'substituicao' => 'Substituicao',
+        'substituicao' => 'Substituição',
         'licenca_amamentacao' => 'Lic. amamentação',
     ];
 
@@ -173,6 +175,40 @@ function escala_mensal_tabelas_em_falta($conn)
     return $missingTables;
 }
 
+function escala_mensal_adicionar_recalculo(&$recalculos, $contexto, $funcionarioId, $dia)
+{
+    if ((int) $funcionarioId <= 0 || (int) $dia < 1 || (int) $dia > $contexto['dias_no_mes']) {
+        return;
+    }
+
+    $data = sprintf('%04d-%02d-%02d', $contexto['ano'], $contexto['mes'], (int) $dia);
+    $recalculos[$data] = [
+        'data' => $data,
+    ];
+}
+
+function escala_mensal_recalcular_resumos($conn, $recalculos)
+{
+    if (!function_exists('calcular_resumo_diario_assiduidade') || empty($recalculos)) {
+        return 0;
+    }
+
+    $erros = 0;
+
+    foreach ($recalculos as $recalculo) {
+        try {
+            $resultado = calcular_resumo_diario_assiduidade($conn, $recalculo['data']);
+            if (!empty($resultado['erros'])) {
+                $erros++;
+            }
+        } catch (Throwable $e) {
+            $erros++;
+        }
+    }
+
+    return $erros;
+}
+
 function escala_mensal_processar_post($conn, $contexto, $missingTables)
 {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -189,6 +225,7 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
 
     if ($acaoPost === 'guardar') {
         $escala = $_POST['escala'] ?? [];
+        $recalculos = [];
 
         if (!is_array($escala)) {
             escala_mensal_redirect('danger', 'Dados da escala inválidos.', $baseParams);
@@ -215,14 +252,20 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
                     observacoes = VALUES(observacoes)");
 
             foreach ($escala as $funcionarioId => $dias) {
-                escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar, $contexto, (int) $funcionarioId, $dias);
+                escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar, $contexto, (int) $funcionarioId, $dias, $recalculos);
             }
 
             mysqli_stmt_close($stmtFuncionario);
             mysqli_stmt_close($stmtGuardar);
             mysqli_commit($conn);
 
-            escala_mensal_redirect('success', 'Escala mensal guardada com sucesso.', $baseParams);
+            $errosRecalculo = escala_mensal_recalcular_resumos($conn, $recalculos);
+            $mensagem = 'Escala mensal guardada com sucesso.';
+            if ($errosRecalculo > 0) {
+                $mensagem .= ' Alguns resumos serão atualizados posteriormente.';
+            }
+
+            escala_mensal_redirect('success', $mensagem, $baseParams);
         } catch (Throwable $e) {
             mysqli_rollback($conn);
             escala_mensal_redirect('danger', 'Não foi possível guardar a escala mensal.', $baseParams);
@@ -231,6 +274,7 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
 
     if ($acaoPost === 'bulk_assign') {
         $funcionarioIds = $_POST['funcionario_ids'] ?? [];
+        $recalculos = [];
         if (is_string($funcionarioIds) && $funcionarioIds !== '') {
             $funcionarioIds = array_filter(array_map('intval', explode(',', $funcionarioIds)));
         }
@@ -285,6 +329,7 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
                         'turno_id' => $turnoId,
                     ];
                     escala_mensal_guardar_dia($stmtGuardar, $contexto, $fid, $func, $dia, $dadosDia);
+                    escala_mensal_adicionar_recalculo($recalculos, $contexto, $fid, $dia);
                 }
             }
 
@@ -292,7 +337,13 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
             mysqli_stmt_close($stmtGuardar);
             mysqli_commit($conn);
 
-            escala_mensal_redirect('success', 'Atribuição em massa aplicada com sucesso.', $baseParams);
+            $errosRecalculo = escala_mensal_recalcular_resumos($conn, $recalculos);
+            $mensagem = 'Atribuição em massa aplicada com sucesso.';
+            if ($errosRecalculo > 0) {
+                $mensagem .= ' Alguns resumos serão atualizados posteriormente.';
+            }
+
+            escala_mensal_redirect('success', $mensagem, $baseParams);
         } catch (Throwable $e) {
             mysqli_rollback($conn);
             escala_mensal_redirect('danger', 'Falha na atribuição em massa.', $baseParams);
@@ -300,7 +351,7 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
     }
 }
 
-function escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar, $contexto, $funcionarioId, $dias)
+function escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar, $contexto, $funcionarioId, $dias, &$recalculos = [])
 {
     if ($funcionarioId <= 0 || !is_array($dias)) {
         return;
@@ -317,6 +368,7 @@ function escala_mensal_guardar_funcionario($conn, $stmtFuncionario, $stmtGuardar
 
     foreach ($dias as $dia => $dadosDia) {
         escala_mensal_guardar_dia($stmtGuardar, $contexto, $funcionarioId, $funcionario, (int) $dia, $dadosDia);
+        escala_mensal_adicionar_recalculo($recalculos, $contexto, $funcionarioId, (int) $dia);
     }
 }
 

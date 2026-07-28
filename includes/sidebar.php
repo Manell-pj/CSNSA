@@ -100,14 +100,6 @@
                         </a>
                     </li>
                 <?php endif; ?>
-                <?php if (isset($conn, $utilizadorSessao) && ac_can($conn, (int) $utilizadorSessao['id'], 'logs.consultar')): ?>
-                    <li class="nav-item <?php echo $paginaAtual === 'logs.php' ? 'active' : ''; ?>">
-                        <a href="logs.php">
-                            <i class="fas fa-clipboard-list"></i>
-                            <p>Logs</p>
-                        </a>
-                    </li>
-                <?php endif; ?>
             </ul>
         </div>
     </div>

@@ -140,7 +140,7 @@ $alertMessage = $_GET['message'] ?? '';
                     <?php if (!empty($missingTables)): ?>
                         <div class="alert alert-warning" role="alert">
                             Faltam tabelas de base: <strong><?php echo e(implode(', ', $missingTables)); ?></strong>.
-                            Execute o schema <code>database/schema_completo.sql</code> antes de usar esta pÃƒÂ¡gina.
+                            Execute o schema <code>database/schema_completo.sql</code> antes de usar esta página.
                         </div>
                     <?php endif; ?>
 
@@ -161,7 +161,7 @@ $alertMessage = $_GET['message'] ?? '';
                         <div class="card-body">
                             <form method="get" id="filtrosEscala" class="row g-3 align-items-end">
                                 <div class="col-md-2">
-                                    <label class="form-label">MÃƒÂªs</label>
+                                    <label class="form-label">Mês</label>
                                     <select name="mes" class="form-select">
                                         <?php for ($i = 1; $i <= 12; $i++): ?>
                                             <option value="<?php echo $i; ?>" <?php echo $i === $mes ? 'selected' : ''; ?>>
@@ -198,7 +198,7 @@ $alertMessage = $_GET['message'] ?? '';
 
                         <section class="escala-paper">
                             <div class="escala-paper-actions">
-                                <strong>HorÃƒÂ¡rios - ServiÃƒÂ§os Comuns - <?php echo e($mesAnoLabel); ?></strong>
+                                <strong>Horários - Serviços Comuns - <?php echo e($mesAnoLabel); ?></strong>
                                 <span class="escala-selection-count text-muted">0 selecionados</span>
                                 <button type="button" class="btn btn-light btn-sm escala-print-btn" onclick="window.print()" title="Imprimir escala">
                                     <i class="fa fa-print"></i>
@@ -216,7 +216,7 @@ $alertMessage = $_GET['message'] ?? '';
                             <div class="escala-paper-body">
                                 <?php if (empty($funcionarios)): ?>
                                     <div class="alert alert-info mb-0">
-                                        Nenhum funcionÃƒÂ¡rio encontrado para os filtros selecionados.
+                                        Nenhum funcionário encontrado para os filtros selecionados.
                                     </div>
                                 <?php else: ?>
                                     <div class="table-responsive escala-wrapper">
@@ -231,7 +231,7 @@ $alertMessage = $_GET['message'] ?? '';
                                             <thead>
                                                 <tr>
                                                     <th class="escala-select-col"><input type="checkbox" id="select_all_rows"></th>
-                                                    <th class="escala-sticky-col escala-funcionario-col">FuncionÃƒÂ¡rio</th>
+                                                    <th class="escala-sticky-col escala-funcionario-col">Funcionário</th>
                                                     <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                         <?php
                                                         $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
@@ -270,9 +270,9 @@ $alertMessage = $_GET['message'] ?? '';
                                                         <th class="escala-sticky-col escala-funcionario-col escala-funcionario">
                                                             <div class="fw-bold"><?php echo e($funcionario['nome']); ?></div>
                                                             <small class="text-muted">
-                                                                <?php echo e($funcionario['numero_mecanografico'] ?: 'Sem nÃƒÂºmero'); ?>
+                                                                <?php echo e($funcionario['numero_mecanografico'] ?: 'Sem número'); ?>
                                                                 <?php if (!empty($funcionario['equipa_nome'])): ?>
-                                                                    Ã‚Â· <?php echo e($funcionario['equipa_nome']); ?>
+                                                                    · <?php echo e($funcionario['equipa_nome']); ?>
                                                                 <?php endif; ?>
                                                             </small>
                                                         </th>
@@ -331,7 +331,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                                         <option value="">Sem turno</option>
                                                                         <?php foreach ($turnos as $turno): ?>
                                                                             <option value="<?php echo (int) $turno['id']; ?>" data-code="<?php echo e(obterCodigoVisualTurno($turno)); ?>" data-label="<?php echo e($turno['nome'] . ' (' . substr($turno['hora_entrada'], 0, 5) . '-' . substr($turno['hora_saida'], 0, 5) . ')'); ?>" <?php echo (int) $turno['id'] === $turnoSelecionado ? 'selected' : ''; ?>>
-                                                                                <?php echo e(obterCodigoVisualTurno($turno)); ?> Ã‚Â· <?php echo e(substr($turno['hora_entrada'], 0, 5) . '-' . substr($turno['hora_saida'], 0, 5)); ?>
+                                                                                <?php echo e(obterCodigoVisualTurno($turno)); ?> · <?php echo e(substr($turno['hora_entrada'], 0, 5) . '-' . substr($turno['hora_saida'], 0, 5)); ?>
                                                                             </option>
                                                                         <?php endforeach; ?>
                                                                     </select>
@@ -353,7 +353,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                                         <label class="form-check-label" for="folga<?php echo (int) $funcionario['id']; ?>_<?php echo $dia; ?>">Folga trabalhada</label>
                                                                     </div>
 
-                                                                    <input type="text" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][observacoes]" class="form-control form-control-sm mt-2 escala-observacoes" placeholder="ObservaÃƒÂ§ÃƒÂµes" value="<?php echo e($observacoes); ?>">
+                                                                    <input type="text" name="escala[<?php echo (int) $funcionario['id']; ?>][<?php echo $dia; ?>][observacoes]" class="form-control form-control-sm mt-2 escala-observacoes" placeholder="Observações" value="<?php echo e($observacoes); ?>">
                                                                 </div>
                                                             </td>
                                                         <?php endfor; ?>
@@ -364,7 +364,7 @@ $alertMessage = $_GET['message'] ?? '';
                                     </div>
                                     <section class="escala-legenda-folha" aria-label="Legenda de turnos e estados">
                                         <div class="escala-legenda-bloco">
-                                            <h5>HorÃƒÂ¡rios</h5>
+                                            <h5>Horários</h5>
                                             <table class="escala-legenda-table">
                                                 <tbody>
                                                     <?php foreach ($turnos as $t): ?>
@@ -381,10 +381,10 @@ $alertMessage = $_GET['message'] ?? '';
                                             <table class="escala-legenda-table">
                                                 <tbody>
                                                     <tr><th>F</th><td>Folga</td></tr>
-                                                    <tr><th>FE</th><td>FÃƒÂ©rias</td></tr>
+                                                    <tr><th>FE</th><td>Férias</td></tr>
                                                     <tr><th>A</th><td>Falta</td></tr>
                                                     <tr><th>B</th><td>Baixa</td></tr>
-                                                    <tr><th>S</th><td>SubstituiÃƒÂ§ÃƒÂ£o</td></tr>
+                                                    <tr><th>S</th><td>Substituição</td></tr>
                                                 </tbody>
                                             </table>
                                         </div>
@@ -402,13 +402,13 @@ $alertMessage = $_GET['message'] ?? '';
             <form method="post" class="modal-content">
                 <input type="hidden" name="acao" value="bulk_assign">
                 <div class="modal-header border-0">
-                    <h5 class="modal-title">AtribuiÃƒÂ§ÃƒÂ£o em massa</h5>
+                    <h5 class="modal-title">Atribuição em massa</h5>
                     <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
                 <div class="modal-body">
-                    <p>Esta aÃƒÂ§ÃƒÂ£o irÃƒÂ¡ aplicar um turno/estado aos funcionÃƒÂ¡rios selecionados.</p>
+                    <p>Esta ação irá aplicar um turno/estado aos funcionários selecionados.</p>
                     <div class="mb-3">
                         <label class="form-label">Turno</label>
                         <select name="turno_id" class="form-select">
@@ -922,7 +922,7 @@ $alertMessage = $_GET['message'] ?? '';
                 $editor.find('.escala-substitui').toggle(mostrarSubstitui);
                 $editor.find('.escala-turno').toggle(mostrarTurno);
                 $cell.find('.escala-cell-code').text(codigo);
-                $cell.find('.escala-cell-trigger').attr('title', label).attr('aria-label', ($cell.data('funcionario') || 'FuncionÃƒÂ¡rio') + ', dia ' + ($cell.data('dia') || '') + ': ' + label);
+                $cell.find('.escala-cell-trigger').attr('title', label).attr('aria-label', ($cell.data('funcionario') || 'Funcionário') + ', dia ' + ($cell.data('dia') || '') + ': ' + label);
                 $cell.find('.escala-cell-flag').remove();
                 if (mostrarSubstitui) {
                     $cell.find('.escala-cell-trigger').append('<span class="escala-cell-flag">S</span>');
@@ -1041,7 +1041,7 @@ $alertMessage = $_GET['message'] ?? '';
                 fecharEditor();
             });
 
-            // filtros reativos: atualizar URL sem botÃƒÂ£o
+            // filtros reativos: atualizar URL sem botão
             $('#filtrosEscala').find('select, input').on('change', function () {
                 var params = new URLSearchParams(window.location.search);
                 $('#filtrosEscala').find('select, input[name="ano"]').each(function () {
@@ -1080,7 +1080,7 @@ $alertMessage = $_GET['message'] ?? '';
                 var ids = [];
                 $('.select_row:checked').each(function () { ids.push($(this).val()); });
                 if (ids.length === 0) {
-                    alert('Selecione pelo menos um funcionÃƒÂ¡rio antes de aplicar.');
+                    alert('Selecione pelo menos um funcionário antes de aplicar.');
                     return;
                 }
                 $('#bulk_funcionario_ids').val(ids.join(','));

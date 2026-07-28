@@ -2358,7 +2358,6 @@ INSERT INTO `permissoes` (`codigo`, `nome`, `descricao`) VALUES
 ('relatorios.exportar', 'Exportar relatórios', 'Exportar relatórios'),
 ('utilizadores.gerir', 'Gerir utilizadores', 'Criar, editar e remover utilizadores'),
 ('permissoes.gerir', 'Gerir permissões', 'Gerir permissões por utilizador'),
-('logs.consultar', 'Consultar logs', 'Consultar logs de auditoria'),
 ('notificacoes.ver', 'Ver notificações', 'Ver notificações de aniversário e diuturnidade'),
 ('notificacoes.gerir', 'Gerir notificações', 'Configurar notificações e confirmar diuturnidades')
 ON DUPLICATE KEY UPDATE
@@ -2413,7 +2412,6 @@ INNER JOIN `permissoes` pe ON pe.codigo IN (
   'banco_horas.consultar',
   'relatorios.consultar',
   'relatorios.exportar',
-  'logs.consultar',
   'notificacoes.ver',
   'notificacoes.gerir'
 )
@@ -2428,7 +2426,6 @@ INNER JOIN `permissoes` pe ON pe.codigo IN (
   'banco_horas.consultar',
   'relatorios.consultar',
   'relatorios.exportar',
-  'logs.consultar',
   'notificacoes.ver'
 )
 WHERE p.slug = 'consulta-auditoria';
