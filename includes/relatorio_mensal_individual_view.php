@@ -33,6 +33,7 @@
                         <th>Baixa</th>
                         <th>Folga</th>
                         <th>Folga trab.</th>
+                        <th>Horas em folga</th>
                         <th>Extra</th>
                         <?php foreach ($relatorio['regras_extra'] as $regra): ?>
                             <th>Extra <?php echo (int) $regra['porcentagem']; ?>%</th>
@@ -57,6 +58,7 @@
                             <td><?php echo (int) $dia['baixa']; ?></td>
                             <td><?php echo (int) $dia['folga']; ?></td>
                             <td><?php echo (int) $dia['folga_trabalhada']; ?></td>
+                            <td><?php echo e(rm_formatar_minutos($dia['minutos_folga_trabalhada'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($dia['minutos_extra'])); ?></td>
                             <?php foreach ($relatorio['regras_extra'] as $regra): ?>
                                 <?php $percentagem = (string) (int) $regra['porcentagem']; ?>
@@ -82,6 +84,7 @@
                         <th><?php echo (int) $t['baixas']; ?></th>
                         <th><?php echo (int) $t['folgas']; ?></th>
                         <th><?php echo (int) $t['folgas_trabalhadas']; ?></th>
+                        <th><?php echo e(rm_formatar_minutos($t['minutos_folga_trabalhada'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_extra'])); ?></th>
                         <?php foreach ($relatorio['regras_extra'] as $regra): ?>
                             <?php $percentagem = (string) (int) $regra['porcentagem']; ?>

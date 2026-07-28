@@ -2,7 +2,6 @@
 // Serviço central para cálculo de assiduidade diária
 // Regras de majoração de horas extra:
 // - As percentagens não são hardcoded; são lidas da tabela `horas_extra_regras`.
-// - Quando um minuto de horas extra cumpre mais do que uma regra (ex: noturno + 1ª hora do 2.º turno),
 //   a resolução obedece a `config_horas_extra.resolucao_prioridade`:
 //     - 'maior_percentagem' (padrão): aplica a percentagem mais elevada disponível para esse minuto;
 //     - 'maior_prioridade': aplica a regra com maior valor de `prioridade` (inteiro);
@@ -169,7 +168,6 @@ function calcular_assiduidade_diaria(array $funcionario, string $date, array $es
         $minutos_trabalhados += max(0, $dur - $overlapPause);
     }
 
-    // trabalho noturno: minutes between 22:00-07:00 (counted later for buckets)
     $trabalho_noturno = 0;
 
     // atraso e saida antecipada: compare entrada/saida aos periodos com tolerancias
@@ -241,7 +239,6 @@ function calcular_assiduidade_diaria(array $funcionario, string $date, array $es
         }
     } else {
         $rules = [
-            ['codigo'=>'noturno','nome'=>'Noturno','porcentagem'=>200,'prioridade'=>200,'data_inicio'=>'2020-01-01','data_fim'=>null],
             ['codigo'=>'segundo_turno_primeira_hora','nome'=>'1h 2turno','porcentagem'=>150,'prioridade'=>100,'data_inicio'=>'2020-01-01','data_fim'=>null],
             ['codigo'=>'segundo_turno_subsequente','nome'=>'>1h 2turno','porcentagem'=>175,'prioridade'=>90,'data_inicio'=>'2020-01-01','data_fim'=>null],
         ];
@@ -279,15 +276,6 @@ function calcular_assiduidade_diaria(array $funcionario, string $date, array $es
         else $merged_work[count($merged_work)-1]['fim'] = max($merged_work[count($merged_work)-1]['fim'],$seg['fim']);
     }
 
-    // compute trabalho_noturno across worked intervals (22:00-07:00)
-    $trabalho_noturno = 0;
-    foreach ($merged_work as $wseg) {
-        for ($ts=$wseg['inicio']; $ts < $wseg['fim']; $ts += 60) {
-            $h = (int) date('H', $ts);
-            if ($h >= 22 || $h < 7) $trabalho_noturno++;
-        }
-    }
-
     // compute extra segments (worked minus predicted)
     $extra_segments = [];
     foreach ($merged_work as $wseg) {
@@ -309,8 +297,6 @@ function calcular_assiduidade_diaria(array $funcionario, string $date, array $es
     foreach ($extra_segments as $seg) {
         for ($ts=$seg['inicio']; $ts < $seg['fim']; $ts += 60) {
             $applicable = [];
-            $h = (int) date('H', $ts);
-            if ($h >= 22 || $h < 7) $applicable[] = ['codigo'=>'noturno','porcentagem'=>200,'prioridade'=>200];
             if ($second_shift_end !== null && $ts >= $second_shift_end) {
                 $pos = $minutes_since_second_shift_extra;
                 if ($pos < 60) $applicable[] = ['codigo'=>'segundo_turno_primeira_hora','porcentagem'=>150,'prioridade'=>100];

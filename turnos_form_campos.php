@@ -1,25 +1,13 @@
 <?php
 $nome = $turno['nome'] ?? '';
 $codigo = $turno['codigo'] ?? '';
+$horaEntrada = isset($turno['hora_entrada']) ? substr((string) $turno['hora_entrada'], 0, 5) : '';
+$horaSaida = isset($turno['hora_saida']) ? substr((string) $turno['hora_saida'], 0, 5) : '';
 $toleranciaAtraso = isset($turno['tolerancia_entrada_min']) ? (int) $turno['tolerancia_entrada_min'] : 0;
 $toleranciaSaida = isset($turno['tolerancia_saida_min']) ? (int) $turno['tolerancia_saida_min'] : 0;
 $horasPrevistas = isset($turno['horas_previstas']) ? $turno['horas_previstas'] : 8.00;
-$turnoNoturno = isset($turno['turno_noturno']) && (int) $turno['turno_noturno'] === 1;
 $ativo = !isset($turno) || (int) ($turno['ativo'] ?? 1) === 1;
-$periodosData = $periodos ?? [];
-$periodosData = array_map(static function ($periodo) {
-    return [
-        'inicio' => substr((string) ($periodo['inicio'] ?? $periodo['hora_inicio'] ?? ''), 0, 5),
-        'fim' => substr((string) ($periodo['fim'] ?? $periodo['hora_fim'] ?? ''), 0, 5),
-    ];
-}, $periodosData);
-if (empty($periodosData) && isset($turno['hora_entrada'], $turno['hora_saida'])) {
-    $periodosData[] = [
-        'inicio' => substr($turno['hora_entrada'], 0, 5),
-        'fim' => substr($turno['hora_saida'], 0, 5),
-    ];
-}
-$turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) spl_object_id((object) $periodosData)), 0, 6);
+$turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) spl_object_id((object) $turno)), 0, 6);
 ?>
 <div class="row">
     <div class="col-md-6 mb-3">
@@ -30,6 +18,16 @@ $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) s
     <div class="col-md-6 mb-3">
         <label class="form-label">Código</label>
         <input type="text" name="codigo" class="form-control" value="<?php echo e($codigo); ?>">
+    </div>
+    <div class="col-md-3 mb-3">
+        <label class="form-label">Hora de entrada *</label>
+        <input type="time" name="hora_entrada" class="form-control" value="<?php echo e($horaEntrada); ?>" required>
+        <div class="invalid-feedback">Indique a hora de entrada.</div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <label class="form-label">Hora de saída *</label>
+        <input type="time" name="hora_saida" class="form-control" value="<?php echo e($horaSaida); ?>" required>
+        <div class="invalid-feedback">Indique a hora de saída.</div>
     </div>
     <div class="col-md-3 mb-3">
         <label class="form-label">Tolerância de atraso (min)</label>
@@ -45,52 +43,8 @@ $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) s
     </div>
     <div class="col-md-4 mb-3">
         <div class="form-check mt-2">
-            <input class="form-check-input" type="checkbox" name="turno_noturno" id="turnoNoturno<?php echo e($turnoFormId); ?>" <?php echo $turnoNoturno ? 'checked' : ''; ?>>
-            <label class="form-check-label" for="turnoNoturno<?php echo e($turnoFormId); ?>">Turno noturno</label>
-        </div>
-    </div>
-    <div class="col-md-4 mb-3">
-        <div class="form-check mt-2">
             <input class="form-check-input" type="checkbox" name="ativo" id="turnoAtivo<?php echo e($turnoFormId); ?>" <?php echo $ativo ? 'checked' : ''; ?>>
             <label class="form-check-label" for="turnoAtivo<?php echo e($turnoFormId); ?>">Ativo</label>
         </div>
-    </div>
-</div>
-<div class="card mb-3">
-    <div class="card-header">
-        <h5 class="card-title mb-0">Períodos de turno <small class="text-muted">(um ou mais períodos no mesmo dia)</small></h5>
-    </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-sm turno-periodos-tabela">
-                <thead>
-                    <tr>
-                        <th>Início *</th>
-                        <th>Fim *</th>
-                        <th style="width: 100px"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($periodosData)): ?>
-                        <?php $periodosData[] = ['inicio' => '', 'fim' => '']; ?>
-                    <?php endif; ?>
-                    <?php foreach ($periodosData as $periodo): ?>
-                        <tr>
-                            <td>
-                                <input type="time" name="periodo_inicio[]" class="form-control" value="<?php echo e($periodo['inicio']); ?>" required>
-                            </td>
-                            <td>
-                                <input type="time" name="periodo_fim[]" class="form-control" value="<?php echo e($periodo['fim']); ?>" required>
-                            </td>
-                            <td>
-                                <button type="button" class="btn btn-danger btn-sm remover-periodo">Remover</button>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <button type="button" class="btn btn-secondary btn-sm turno-periodos-adicionar">Adicionar período</button>
-        <div class="invalid-feedback d-none periodos-feedback">Adicione pelo menos um período válido.</div>
     </div>
 </div>

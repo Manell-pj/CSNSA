@@ -133,7 +133,7 @@ function rm_carregar_regras_extra($conn)
     }
 
     $regras = [];
-    $result = mysqli_query($conn, 'SELECT codigo, nome, porcentagem FROM horas_extra_regras WHERE ativo = 1 ORDER BY porcentagem ASC, prioridade DESC');
+    $result = mysqli_query($conn, 'SELECT codigo, nome, porcentagem FROM horas_extra_regras WHERE ativo = 1 AND codigo <> "noturno" ORDER BY porcentagem ASC, prioridade DESC');
     while ($row = mysqli_fetch_assoc($result)) {
         $regras[] = $row;
     }
@@ -262,6 +262,8 @@ function rm_carregar_relatorio_mensal($conn, $ano, $mes, $funcionarioId, $equipa
             $minutosPrevistos = (int) ($resumo['minutos_previstos'] ?? 0);
             $minutosTrabalhados = (int) ($resumo['minutos_trabalhados'] ?? 0);
             $minutosExtra = (int) ($resumo['minutos_extra'] ?? max(0, $minutosTrabalhados - $minutosPrevistos));
+            $folgaTrabalhada = (int) ($resumo['folga_trabalhada'] ?? ($escala['folga_trabalhada'] ?? 0));
+            $minutosFolgaTrabalhada = $folgaTrabalhada ? $minutosTrabalhados : 0;
             $extraBuckets = rm_distribuir_extra($minutosExtra, $regrasExtra);
             $observacoes = array_filter([
                 $escala['observacoes'] ?? null,
@@ -281,7 +283,8 @@ function rm_carregar_relatorio_mensal($conn, $ano, $mes, $funcionarioId, $equipa
                 'ferias' => $tipoDia === 'ferias' || ($resumo['estado'] ?? '') === 'ferias' ? 1 : 0,
                 'baixa' => $tipoDia === 'baixa' ? 1 : 0,
                 'folga' => $tipoDia === 'folga' || ($resumo['estado'] ?? '') === 'folga' ? 1 : 0,
-                'folga_trabalhada' => (int) ($resumo['folga_trabalhada'] ?? ($escala['folga_trabalhada'] ?? 0)),
+                'folga_trabalhada' => $folgaTrabalhada,
+                'minutos_folga_trabalhada' => $minutosFolgaTrabalhada,
                 'minutos_extra' => $minutosExtra,
                 'extra_percentagens' => $extraBuckets,
                 'banco_horas_minutos' => (int) ($banco[$fid][$data] ?? 0),
@@ -336,6 +339,7 @@ function rm_totais_vazios($regrasExtra)
         'baixas' => 0,
         'folgas' => 0,
         'folgas_trabalhadas' => 0,
+        'minutos_folga_trabalhada' => 0,
         'minutos_extra' => 0,
         'extra_percentagens' => $extras,
         'banco_horas_minutos' => 0,
@@ -357,6 +361,7 @@ function rm_acumular_totais(&$totais, $dia)
     $totais['baixas'] += $dia['baixa'];
     $totais['folgas'] += $dia['folga'];
     $totais['folgas_trabalhadas'] += $dia['folga_trabalhada'];
+    $totais['minutos_folga_trabalhada'] += $dia['minutos_folga_trabalhada'];
     $totais['minutos_extra'] += $dia['minutos_extra'];
     $totais['banco_horas_minutos'] += $dia['banco_horas_minutos'];
     $totais['correcoes_manuais'] += $dia['correcoes_manuais'];
@@ -546,7 +551,7 @@ function rm_xlsx_rows_resumo($relatorio)
         ['Gerado por', $relatorio['meta']['gerado_por']],
         [],
         array_merge(
-            ['Funcionário', 'Equipa', 'Função', 'Carga diária', 'Carga semanal', 'Dias previstos', 'Dias trabalhados', 'Horas previstas', 'Horas trabalhadas', 'Pausas', 'Atrasos', 'Faltas', 'Férias', 'Baixas', 'Folgas', 'Folgas trabalhadas', 'Horas extra'],
+            ['Funcionário', 'Equipa', 'Função', 'Carga diária', 'Carga semanal', 'Dias previstos', 'Dias trabalhados', 'Horas previstas', 'Horas trabalhadas', 'Pausas', 'Atrasos', 'Faltas', 'Férias', 'Baixas', 'Folgas', 'Folgas trabalhadas', 'Horas em folga', 'Horas extra'],
             array_map(fn($r) => 'Extra ' . (int) $r['porcentagem'] . '%', $relatorio['regras_extra']),
             ['Banco horas', 'Correções', 'Incidências pendentes']
         ),
@@ -571,6 +576,7 @@ function rm_xlsx_rows_resumo($relatorio)
             $t['baixas'],
             $t['folgas'],
             $t['folgas_trabalhadas'],
+            rm_formatar_minutos($t['minutos_folga_trabalhada']),
             rm_formatar_minutos($t['minutos_extra']),
         ];
         foreach ($relatorio['regras_extra'] as $regra) {
@@ -585,7 +591,7 @@ function rm_xlsx_rows_resumo($relatorio)
 
     $t = $relatorio['totais_equipa'];
     $rows[] = [];
-    $totalRow = ['Total da equipa', '', '', '', '', $t['dias_previstos'], $t['dias_trabalhados'], rm_formatar_minutos($t['minutos_previstos']), rm_formatar_minutos($t['minutos_trabalhados']), rm_formatar_minutos($t['minutos_pausas']), rm_formatar_minutos($t['minutos_atraso']), $t['faltas'], $t['ferias'], $t['baixas'], $t['folgas'], $t['folgas_trabalhadas'], rm_formatar_minutos($t['minutos_extra'])];
+    $totalRow = ['Total da equipa', '', '', '', '', $t['dias_previstos'], $t['dias_trabalhados'], rm_formatar_minutos($t['minutos_previstos']), rm_formatar_minutos($t['minutos_trabalhados']), rm_formatar_minutos($t['minutos_pausas']), rm_formatar_minutos($t['minutos_atraso']), $t['faltas'], $t['ferias'], $t['baixas'], $t['folgas'], $t['folgas_trabalhadas'], rm_formatar_minutos($t['minutos_folga_trabalhada']), rm_formatar_minutos($t['minutos_extra'])];
     foreach ($relatorio['regras_extra'] as $regra) {
         $percentagem = (string) (int) $regra['porcentagem'];
         $totalRow[] = rm_formatar_minutos($t['extra_percentagens'][$percentagem] ?? 0);
@@ -602,7 +608,7 @@ function rm_xlsx_rows_detalhe($relatorio)
 {
     $rows = [
         array_merge(
-            ['Funcionário', 'Data', 'Tipo dia', 'Entradas e saídas', 'Horas previstas', 'Horas trabalhadas', 'Pausas', 'Atrasos', 'Falta', 'Férias', 'Baixa', 'Folga', 'Folga trabalhada', 'Horas extra'],
+            ['Funcionário', 'Data', 'Tipo dia', 'Entradas e saídas', 'Horas previstas', 'Horas trabalhadas', 'Pausas', 'Atrasos', 'Falta', 'Férias', 'Baixa', 'Folga', 'Folga trabalhada', 'Horas em folga', 'Horas extra'],
             array_map(fn($r) => 'Extra ' . (int) $r['porcentagem'] . '%', $relatorio['regras_extra']),
             ['Banco horas', 'Correções manuais', 'Incidências pendentes', 'Observações']
         ),
@@ -624,6 +630,7 @@ function rm_xlsx_rows_detalhe($relatorio)
                 $dia['baixa'],
                 $dia['folga'],
                 $dia['folga_trabalhada'],
+                rm_formatar_minutos($dia['minutos_folga_trabalhada']),
                 rm_formatar_minutos($dia['minutos_extra']),
             ];
             foreach ($relatorio['regras_extra'] as $regra) {

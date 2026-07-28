@@ -27,13 +27,13 @@ $res = calcular_assiduidade_diaria(['id'=>1],'2026-07-14', $periodos, $periodos,
 assert_eq($res['minutos_previstos'], 7*60, 'Turno partido - minutos previstos');
 assert_eq($res['minutos_trabalhados'], 7*60, 'Turno partido - minutos trabalhados');
 
-// 3. Turno noturno: 22:00 -> 06:00 next day
+// 3. Turno 22:00 -> 06:00 next day: noturno nao altera o calculo
 $periodos = [['inicio'=>'2026-07-14 22:00','fim'=>'2026-07-15 06:00']];
 $registos = [r('entrada','2026-07-14 22:00'), r('saida','2026-07-15 06:00')];
 $res = calcular_assiduidade_diaria(['id'=>1],'2026-07-14', $periodos, $periodos, $registos, [], [], null, null, [], false, []);
 assert_eq($res['minutos_previstos'], 8*60, 'Turno noturno - minutos previstos');
 assert_eq($res['minutos_trabalhados'], 8*60, 'Turno noturno - minutos trabalhados');
-assert_eq($res['trabalho_noturno']>0, true, 'Turno noturno - trabalho noturno detetado');
+assert_eq($res['trabalho_noturno'], 0, 'Turno 22-06 - sem diferenca por horario noturno');
 
 // 4. Falta de saída
 $periodos = [['inicio'=>'2026-07-14 09:00','fim'=>'2026-07-14 17:00']];
@@ -65,7 +65,6 @@ assert_eq($res['minutos_previstos'], 0, 'Férias aprovadas -> minutos previstos 
 $periodos = [['inicio'=>'2026-07-14 08:00','fim'=>'2026-07-14 12:00'],['inicio'=>'2026-07-14 13:00','fim'=>'2026-07-14 17:00']];
 $registos = [r('entrada','2026-07-14 08:00'), r('saida','2026-07-14 12:00'), r('entrada_segundo_turno','2026-07-14 13:00'), r('saida_segundo_turno','2026-07-14 18:30')];
 $regras = [
-    ['codigo'=>'noturno','porcentagem'=>200,'prioridade'=>200,'data_inicio'=>'2020-01-01','data_fim'=>null],
     ['codigo'=>'segundo_turno_primeira_hora','porcentagem'=>150,'prioridade'=>100,'data_inicio'=>'2020-01-01','data_fim'=>null],
     ['codigo'=>'segundo_turno_subsequente','porcentagem'=>175,'prioridade'=>90,'data_inicio'=>'2020-01-01','data_fim'=>null],
 ];
@@ -74,7 +73,7 @@ assert_eq($res['segundo_turno'], true, 'Deteção de segundo turno');
 assert_eq($res['minutos_trabalhados'], 570, 'Dois turnos consecutivos - minutos trabalhados (inclui 90 min extra)');
 assert_eq($res['minutos_150'], 60, 'Primeira hora extra segundo turno a 150%');
 assert_eq($res['minutos_175'], 30, 'Horas extra subsequentes a 175%');
-assert_eq($res['minutos_200'], 0, 'Nenhuma hora extra noturna neste exemplo');
+assert_eq($res['minutos_200'], 0, 'Nenhuma hora extra a 200% neste exemplo');
 
 echo "Tests complete.\n";
 

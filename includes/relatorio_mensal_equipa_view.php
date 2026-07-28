@@ -23,6 +23,7 @@
                         <th>Faltas</th>
                         <th>Ausências</th>
                         <th>Folgas trab.</th>
+                        <th>Horas em folga</th>
                         <th>Banco horas</th>
                         <th>Correções</th>
                         <th>Incidências pendentes</th>
@@ -49,6 +50,7 @@
                             <td><?php echo (int) $t['faltas']; ?></td>
                             <td><?php echo (int) ($t['ferias'] + $t['baixas']); ?></td>
                             <td><?php echo (int) $t['folgas_trabalhadas']; ?></td>
+                            <td><?php echo e(rm_formatar_minutos($t['minutos_folga_trabalhada'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['banco_horas_minutos'])); ?></td>
                             <td><?php echo (int) $t['correcoes_manuais']; ?></td>
                             <td><?php echo (int) $t['incidencias_pendentes']; ?></td>
@@ -75,6 +77,7 @@
                         <th><?php echo (int) $t['faltas']; ?></th>
                         <th><?php echo (int) ($t['ferias'] + $t['baixas']); ?></th>
                         <th><?php echo (int) $t['folgas_trabalhadas']; ?></th>
+                        <th><?php echo e(rm_formatar_minutos($t['minutos_folga_trabalhada'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['banco_horas_minutos'])); ?></th>
                         <th><?php echo (int) $t['correcoes_manuais']; ?></th>
                         <th><?php echo (int) $t['incidencias_pendentes']; ?></th>

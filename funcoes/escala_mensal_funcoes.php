@@ -15,11 +15,23 @@ function escala_mensal_redirect($type, $message, $params = [])
     header('Location: escala_mensal.php?' . http_build_query($params));
     exit;
 }
-
+ 
 function escala_mensal_table_exists($conn, $table)
 {
     $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
     mysqli_stmt_bind_param($stmt, 's', $table);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    return (int) ($row['total'] ?? 0) > 0;
+}
+
+function escala_mensal_column_exists($conn, $table, $column)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS total FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+    mysqli_stmt_bind_param($stmt, 'ss', $table, $column);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $row = mysqli_fetch_assoc($result);
@@ -374,7 +386,7 @@ function escala_mensal_carregar_dados($conn, $contexto, $missingTables)
 
     $dados['equipas'] = escala_mensal_carregar_equipas($conn);
     $dados['turnos'] = escala_mensal_carregar_turnos($conn);
-    $dados['funcionarios'] = escala_mensal_carregar_funcionarios($conn, $contexto['equipa_id']);
+    $dados['funcionarios'] = escala_mensal_carregar_funcionarios($conn, $contexto['equipa_id'], $contexto['setor_id'] ?? 0);
     $dados['escala_guardada'] = escala_mensal_carregar_escala_guardada($conn, $contexto['ano'], $contexto['mes']);
     $dados['setores'] = escala_mensal_carregar_setores($conn);
 
@@ -429,24 +441,47 @@ function escala_mensal_carregar_turnos($conn)
     return $rows;
 }
 
-function escala_mensal_carregar_funcionarios($conn, $equipaId)
+function escala_mensal_carregar_funcionarios($conn, $equipaId, $setorId = 0)
 {
     $rows = [];
+    $temSetorFuncionarios = escala_mensal_column_exists($conn, 'funcionarios', 'setor_id');
+    $temSetorEquipas = escala_mensal_column_exists($conn, 'equipas', 'setor_id');
+    if ($temSetorFuncionarios && $temSetorEquipas) {
+        $selectSetorId = 'COALESCE(f.setor_id, e.setor_id)';
+    } elseif ($temSetorFuncionarios) {
+        $selectSetorId = 'f.setor_id';
+    } elseif ($temSetorEquipas) {
+        $selectSetorId = 'e.setor_id';
+    } else {
+        $selectSetorId = 'NULL';
+    }
+    $joinSetores = ($temSetorFuncionarios || $temSetorEquipas) && escala_mensal_table_exists($conn, 'setores');
     $sql = "SELECT f.id, f.utilizador_id, f.nome, f.numero_mecanografico, f.funcao, f.equipa_id,
-                   e.nome AS equipa_nome, f.data_nascimento
+                   e.nome AS equipa_nome, f.data_nascimento,
+                   {$selectSetorId} AS setor_id,
+                   " . ($joinSetores ? 's.nome' : 'NULL') . " AS setor_nome
             FROM funcionarios f
-            LEFT JOIN equipas e ON e.id = f.equipa_id
+            LEFT JOIN equipas e ON e.id = f.equipa_id" .
+            ($joinSetores ? " LEFT JOIN setores s ON s.id = {$selectSetorId}" : '') . "
             WHERE f.estado = 'ativo'";
 
     if ($equipaId > 0) {
         $sql .= ' AND f.equipa_id = ?';
     }
 
-    $sql .= ' ORDER BY e.nome ASC, f.nome ASC';
+    if ($setorId > 0 && ($temSetorFuncionarios || $temSetorEquipas)) {
+        $sql .= ' AND ' . $selectSetorId . ' = ?';
+    }
+
+    $sql .= ' ORDER BY setor_nome ASC, e.nome ASC, f.nome ASC';
     $stmt = mysqli_prepare($conn, $sql);
 
-    if ($equipaId > 0) {
+    if ($equipaId > 0 && $setorId > 0 && ($temSetorFuncionarios || $temSetorEquipas)) {
+        mysqli_stmt_bind_param($stmt, 'ii', $equipaId, $setorId);
+    } elseif ($equipaId > 0) {
         mysqli_stmt_bind_param($stmt, 'i', $equipaId);
+    } elseif ($setorId > 0 && ($temSetorFuncionarios || $temSetorEquipas)) {
+        mysqli_stmt_bind_param($stmt, 'i', $setorId);
     }
 
     mysqli_stmt_execute($stmt);

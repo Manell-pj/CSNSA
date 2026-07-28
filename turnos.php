@@ -16,28 +16,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($acao === 'criar') {
         $nome = get_post_value('nome');
         $codigo = get_post_value('codigo') ?: null;
-        $periodos = limpar_periodos_post($_POST['periodo_inicio'] ?? [], $_POST['periodo_fim'] ?? []);
         $inicioPausa = null;
         $fimPausa = null;
+        $horaEntrada = nullable_time($_POST['hora_entrada'] ?? '');
+        $horaSaida = nullable_time($_POST['hora_saida'] ?? '');
         $toleranciaAtraso = (int) ($_POST['tolerancia_entrada_min'] ?? 0);
         $toleranciaSaida = (int) ($_POST['tolerancia_saida_min'] ?? 0);
         $horasPrevistas = (float) ($_POST['horas_previstas'] ?? 8);
-        $turnoNoturno = isset($_POST['turno_noturno']) ? 1 : 0;
+        $turnoNoturno = 0;
         $ativo = isset($_POST['ativo']) ? 1 : 0;
 
         if ($nome === '') {
             redirect_with_message('danger', 'Preencha o nome do turno.');
         }
-
-        if (!validar_periodos($periodos, $erro)) {
-            redirect_with_message('danger', $erro);
+        if ($horaEntrada === null || $horaSaida === null) {
+            redirect_with_message('danger', 'Preencha a hora de entrada e a hora de saida.');
         }
-        $horaEntrada = $periodos[0]['inicio'] ?? '';
-        $horaSaida = end($periodos)['fim'] ?? '';
 
-        if ($horaEntrada === '' || $horaSaida === '') {
-            redirect_with_message('danger', 'Defina pelo menos um período de turno válido.');
-        }
+        $periodos = [['inicio' => $horaEntrada, 'fim' => $horaSaida]];
 
         try {
             $stmt = mysqli_prepare($conn, 'INSERT INTO turnos (nome, codigo, hora_entrada, hora_saida, inicio_pausa, fim_pausa, tolerancia_entrada_min, tolerancia_saida_min, horas_previstas, turno_noturno, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -61,28 +57,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int) ($_POST['id'] ?? 0);
         $nome = get_post_value('nome');
         $codigo = get_post_value('codigo') ?: null;
-        $periodos = limpar_periodos_post($_POST['periodo_inicio'] ?? [], $_POST['periodo_fim'] ?? []);
         $inicioPausa = null;
         $fimPausa = null;
+        $horaEntrada = nullable_time($_POST['hora_entrada'] ?? '');
+        $horaSaida = nullable_time($_POST['hora_saida'] ?? '');
         $toleranciaAtraso = (int) ($_POST['tolerancia_entrada_min'] ?? 0);
         $toleranciaSaida = (int) ($_POST['tolerancia_saida_min'] ?? 0);
         $horasPrevistas = (float) ($_POST['horas_previstas'] ?? 8);
-        $turnoNoturno = isset($_POST['turno_noturno']) ? 1 : 0;
+        $turnoNoturno = 0;
         $ativo = isset($_POST['ativo']) ? 1 : 0;
 
         if ($id <= 0 || $nome === '') {
             redirect_with_message('danger', 'Preencha os campos obrigatórios.');
         }
-
-        if (!validar_periodos($periodos, $erro)) {
-            redirect_with_message('danger', $erro);
+        if ($horaEntrada === null || $horaSaida === null) {
+            redirect_with_message('danger', 'Preencha a hora de entrada e a hora de saida.');
         }
-        $horaEntrada = $periodos[0]['inicio'] ?? '';
-        $horaSaida = end($periodos)['fim'] ?? '';
 
-        if ($horaEntrada === '' || $horaSaida === '') {
-            redirect_with_message('danger', 'Defina pelo menos um período de turno válido.');
-        }
+        $periodos = [['inicio' => $horaEntrada, 'fim' => $horaSaida]];
 
         try {
             $stmt = mysqli_prepare($conn, 'UPDATE turnos SET nome = ?, codigo = ?, hora_entrada = ?, hora_saida = ?, inicio_pausa = ?, fim_pausa = ?, tolerancia_entrada_min = ?, tolerancia_saida_min = ?, horas_previstas = ?, turno_noturno = ?, ativo = ? WHERE id = ?');
@@ -136,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $turnos = [];
 $sql = "SELECT
             t.id, t.nome, t.codigo, t.hora_entrada, t.hora_saida,
-            t.tolerancia_entrada_min, t.tolerancia_saida_min, t.horas_previstas, t.turno_noturno,
+            t.tolerancia_entrada_min, t.tolerancia_saida_min, t.horas_previstas,
             t.ativo, t.created_at, t.updated_at
         FROM turnos t
         ORDER BY t.nome ASC";
@@ -148,12 +140,6 @@ while ($row = mysqli_fetch_assoc($result)) {
 }
 mysqli_stmt_close($stmt);
 
-$periodosPorTurno = [];
-if ($temTabelaTurnoPeriodos && !empty($turnos)) {
-    foreach ($turnos as $turno) {
-        $periodosPorTurno[(int) $turno['id']] = obter_periodos_turno($conn, $turno['id']);
-    }
-}
 
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
@@ -215,7 +201,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <tr>
                                             <th>Código</th>
                                             <th>Nome</th>
-                                            <th>Períodos</th>
+                                            <th>Horário</th>
                                             <th>Tolerância</th>
                                             <th>Estado</th>
                                             <th style="width: 160px">Ações</th>
@@ -223,11 +209,10 @@ $alertMessage = $_GET['message'] ?? '';
                                     </thead>
                                     <tbody>
                                         <?php foreach ($turnos as $turno): ?>
-                                            <?php $periodos = $periodosPorTurno[(int) $turno['id']] ?? []; ?>
                                             <tr>
                                                 <td><?php echo e($turno['codigo'] ?: '-'); ?></td>
                                                 <td><?php echo e($turno['nome']); ?></td>
-                                                <td><?php echo e(!empty($periodos) ? periodo_resumo($periodos) : sprintf('%s–%s', substr($turno['hora_entrada'], 0, 5), substr($turno['hora_saida'], 0, 5))); ?></td>
+                                                <td><?php echo e(sprintf('%s-%s', substr($turno['hora_entrada'], 0, 5), substr($turno['hora_saida'], 0, 5))); ?></td>
                                                 <td><?php echo (int) $turno['tolerancia_entrada_min']; ?> min</td>
                                                 <td>
                                                     <?php if ((int) $turno['ativo'] === 1): ?>
@@ -268,7 +253,7 @@ $alertMessage = $_GET['message'] ?? '';
                     </button>
                 </div>
                 <div class="modal-body">
-                    <?php $turno = []; $periodos = []; include __DIR__ . '/turnos_form_campos.php'; ?>
+                    <?php $turno = []; include __DIR__ . '/turnos_form_campos.php'; ?>
                 </div>
                 <div class="modal-footer border-0">
                     <button type="submit" class="btn btn-primary">Guardar</button>
@@ -279,7 +264,6 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
 
     <?php foreach ($turnos as $turno): ?>
-        <?php $periodos = obter_periodos_turno($conn, $turno['id']); ?>
         <div class="modal fade" id="modalEditarTurno<?php echo (int) $turno['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
@@ -323,28 +307,6 @@ $alertMessage = $_GET['message'] ?? '';
                     }
                 }
             });
-
-                function novaLinhaPeriodo(inicio = '', fim = '') {
-                    return '<tr>' +
-                        '<td><input type="time" name="periodo_inicio[]" class="form-control" value="' + inicio + '" required></td>' +
-                        '<td><input type="time" name="periodo_fim[]" class="form-control" value="' + fim + '" required></td>' +
-                        '<td><button type="button" class="btn btn-danger btn-sm remover-periodo">Remover</button></td>' +
-                        '</tr>';
-                }
-
-                $(document).on('click', '.turno-periodos-adicionar', function () {
-                    var tabela = $(this).closest('.card-body').find('table.turno-periodos-tabela tbody');
-                    tabela.append(novaLinhaPeriodo());
-                });
-
-                $(document).on('click', '.remover-periodo', function () {
-                    var tbody = $(this).closest('tbody');
-                    if (tbody.find('tr').length <= 1) {
-                        return;
-                    }
-                    $(this).closest('tr').remove();
-                });
-
                 $('.needs-validation').on('submit', function (event) {
                     if (!this.checkValidity()) {
                         event.preventDefault();
