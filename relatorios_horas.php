@@ -1,4 +1,9 @@
 <?php
+$exportar = $_GET['exportar'] ?? '';
+if ($exportar === 'xlsx') {
+    ob_start();
+}
+
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
@@ -14,7 +19,6 @@ $ano = (int) ($_GET['ano'] ?? $anoAtual);
 $mes = (int) ($_GET['mes'] ?? $mesAtual);
 $funcionarioId = (int) ($_GET['funcionario_id'] ?? 0);
 $equipaId = (int) ($_GET['equipa_id'] ?? 0);
-$exportar = $_GET['exportar'] ?? '';
 
 if ($ano < 2000 || $ano > 2100) {
     $ano = $anoAtual;
