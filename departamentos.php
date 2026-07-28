@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nome = get_post_value('nome');
         $codigo = get_post_value('codigo') ?: gerar_codigo_equipa();
         $descricao = nullable_text($_POST['descricao'] ?? '');
-        $ativo = isset($_POST['ativo']) ? 1 : 1;
+        $ativo = isset($_POST['ativo']) ? 1 : 0;
 
         if ($nome === '') {
             redirect_with_message('danger', 'Preencha o nome da equipa.');
@@ -339,6 +339,10 @@ $alertMessage = $_GET['message'] ?? '';
                     <div class="mb-3">
                         <label class="form-label">Descrição</label>
                         <textarea name="descricao" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="ativo" id="ativoNovaEquipa" checked>
+                        <label class="form-check-label" for="ativoNovaEquipa">Ativa</label>
                     </div>
                 </div>
                 <div class="modal-footer border-0">

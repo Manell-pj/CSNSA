@@ -62,7 +62,7 @@ CREATE TABLE `departamentos` (
 CREATE TABLE `utilizadores` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `departamento_id` INT UNSIGNED DEFAULT NULL,
-  `numero_mecanografico` VARCHAR(50) DEFAULT NULL,
+  `numero_mecanografico` INT UNSIGNED DEFAULT NULL,
   `nome` VARCHAR(160) NOT NULL,
   `email` VARCHAR(160) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
@@ -575,7 +575,7 @@ CREATE TABLE IF NOT EXISTS `funcionarios` (
   `utilizador_id` INT UNSIGNED DEFAULT NULL,
   `setor_id` INT UNSIGNED DEFAULT NULL,
   `equipa_id` INT UNSIGNED DEFAULT NULL,
-  `numero_mecanografico` VARCHAR(50) DEFAULT NULL,
+  `numero_mecanografico` INT UNSIGNED DEFAULT NULL,
   `nome` VARCHAR(160) NOT NULL,
   `email` VARCHAR(160) DEFAULT NULL,
   `telefone` VARCHAR(40) DEFAULT NULL,
@@ -625,6 +625,8 @@ WHERE NOT EXISTS (
 CALL add_column_if_missing('utilizadores', 'setor_id', 'INT UNSIGNED DEFAULT NULL AFTER `departamento_id`');
 CALL add_column_if_missing('utilizadores', 'equipa_id', 'INT UNSIGNED DEFAULT NULL AFTER `setor_id`');
 CALL add_column_if_missing('utilizadores', 'funcionario_id', 'INT UNSIGNED DEFAULT NULL AFTER `equipa_id`');
+ALTER TABLE `utilizadores` MODIFY `numero_mecanografico` INT UNSIGNED DEFAULT NULL;
+ALTER TABLE `funcionarios` MODIFY `numero_mecanografico` INT UNSIGNED DEFAULT NULL;
 CALL add_index_if_missing('utilizadores', 'idx_utilizadores_setor', 'INDEX `idx_utilizadores_setor` (`setor_id`)');
 CALL add_index_if_missing('utilizadores', 'idx_utilizadores_equipa', 'INDEX `idx_utilizadores_equipa` (`equipa_id`)');
 CALL add_index_if_missing('utilizadores', 'idx_utilizadores_funcionario', 'INDEX `idx_utilizadores_funcionario` (`funcionario_id`)');
@@ -1448,7 +1450,7 @@ CREATE TABLE IF NOT EXISTS `funcionarios` (
   `equipa_id` INT UNSIGNED DEFAULT NULL,
   `codigo_picagem` VARCHAR(80) DEFAULT NULL,
   `entidade` VARCHAR(180) DEFAULT NULL,
-  `numero_mecanografico` VARCHAR(50) DEFAULT NULL,
+  `numero_mecanografico` INT UNSIGNED DEFAULT NULL,
   `data_ficha` DATE DEFAULT NULL,
   `nome` VARCHAR(160) NOT NULL,
   `email` VARCHAR(160) DEFAULT NULL,

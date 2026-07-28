@@ -8,6 +8,10 @@ if (total_utilizadores($conn) > 0) {
     exit;
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+}
+
 $erro = '';
 $nome = trim($_POST['nome'] ?? '');
 $email = trim($_POST['email'] ?? '');
@@ -16,7 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $confirmarPassword = $_POST['confirmar_password'] ?? '';
 
-    if ($nome === '' || $email === '' || $password === '') {
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        $erro = 'Token CSRF inválido.';
+    } elseif ($nome === '' || $email === '' || $password === '') {
         $erro = 'Preencha nome, email e palavra-passe.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $erro = 'Introduza um email válido.';
@@ -93,6 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="post" class="login-form">
+                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <div class="form-group">
                     <label for="nome"><b>Nome</b></label>
                     <input id="nome" name="nome" type="text" class="form-control" value="<?php echo e($nome); ?>" required>

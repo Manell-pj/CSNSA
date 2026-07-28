@@ -145,6 +145,10 @@ function ensure_funcionarios_extended_schema($conn)
         ('1', 'TRABALHO DEPENDENTE', 'A - TRABALHO DEPENDENTE', NULL)");
 
     $columns = [
+        'codigo_picagem' => "VARCHAR(80) DEFAULT NULL AFTER `equipa_id`",
+        'codigo_picagem_hash' => "VARCHAR(255) DEFAULT NULL AFTER `codigo_picagem`",
+        'codigo_picagem_tentativas' => "INT NOT NULL DEFAULT 0 AFTER `codigo_picagem_hash`",
+        'codigo_picagem_bloqueado_ate' => "DATETIME DEFAULT NULL AFTER `codigo_picagem_tentativas`",
         'data_nascimento' => "DATE DEFAULT NULL AFTER `telefone`",
         'tipo_horario' => "VARCHAR(80) DEFAULT NULL AFTER `tipo_contrato`",
         'entidade' => "VARCHAR(180) DEFAULT NULL AFTER `equipa_id`",

@@ -143,7 +143,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Número mec *</label>
-                <input type="text" name="numero_mecanografico" class="form-control js-numero-mecanografico" value="<?php echo e($funcionarioForm['numero_mecanografico']); ?>" required>
+                <input type="number" min="1" step="1" name="numero_mecanografico" class="form-control js-numero-mecanografico" value="<?php echo e($funcionarioForm['numero_mecanografico']); ?>" required>
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Data *</label>

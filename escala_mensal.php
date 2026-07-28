@@ -6,6 +6,14 @@ require_once __DIR__ . '/funcoes/escala_mensal_funcoes.php';
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'escalas.gerir');
 
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+}
+
 $contexto = escala_mensal_contexto_request();
 $ano = $contexto['ano'];
 $mes = $contexto['mes'];
@@ -320,6 +328,7 @@ $headExtraStyle = '
                     </div>
 
                     <form method="post">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                         <input type="hidden" name="acao" value="guardar">
                         <input type="hidden" name="mes" value="<?php echo (int) $mes; ?>">
                         <input type="hidden" name="ano" value="<?php echo (int) $ano; ?>">
@@ -538,6 +547,7 @@ $headExtraStyle = '
     <div class="modal fade" id="modalBulkAssign" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog" role="document">
             <form method="post" class="modal-content">
+                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <input type="hidden" name="acao" value="bulk_assign">
                 <div class="modal-header border-0">
                     <h5 class="modal-title">Atribuição em massa</h5>

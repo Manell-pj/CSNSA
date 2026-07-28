@@ -21,12 +21,12 @@ $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) s
     </div>
     <div class="col-md-3 mb-3">
         <label class="form-label">Hora de entrada *</label>
-        <input type="time" name="hora_entrada" class="form-control" value="<?php echo e($horaEntrada); ?>" required>
+        <input type="time" name="hora_entrada" class="form-control js-turno-hora-entrada" value="<?php echo e($horaEntrada); ?>" required>
         <div class="invalid-feedback">Indique a hora de entrada.</div>
     </div>
     <div class="col-md-3 mb-3">
         <label class="form-label">Hora de saída *</label>
-        <input type="time" name="hora_saida" class="form-control" value="<?php echo e($horaSaida); ?>" required>
+        <input type="time" name="hora_saida" class="form-control js-turno-hora-saida" value="<?php echo e($horaSaida); ?>" required>
         <div class="invalid-feedback">Indique a hora de saída.</div>
     </div>
     <div class="col-md-3 mb-3">
@@ -39,7 +39,7 @@ $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) s
     </div>
     <div class="col-md-4 mb-3">
         <label class="form-label">Horas previstas</label>
-        <input type="number" step="0.25" name="horas_previstas" class="form-control" min="0" value="<?php echo e($horasPrevistas); ?>">
+        <input type="number" step="0.25" name="horas_previstas" class="form-control js-turno-horas-previstas" min="0" value="<?php echo e($horasPrevistas); ?>">
     </div>
     <div class="col-md-4 mb-3">
         <div class="form-check mt-2">

@@ -6,6 +6,14 @@ require_once __DIR__ . '/funcoes/utilizadores_funcoes.php';
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'utilizadores.gerir');
 
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+}
+
 $permissoesDisponiveis = [];
 $resPermissoes = mysqli_query($conn, 'SELECT id, codigo, nome FROM permissoes ORDER BY codigo ASC');
 if ($resPermissoes) {
@@ -19,6 +27,10 @@ $permissoesIdsPorCodigo = permissoes_ids_por_codigo($permissoesDisponiveis);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
     ac_require_permission($conn, $utilizadorSessao, 'utilizadores.gerir');
+
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        redirect_with_message('danger', 'Token CSRF inválido.');
+    }
 
     if ($acao === 'criar') {
         $nome = get_post_value('nome');
@@ -285,6 +297,7 @@ $alertMessage = $_GET['message'] ?? '';
         <div class="modal-dialog modal-lg" role="document">
             <form method="post" class="modal-content needs-validation" novalidate>
                 <input type="hidden" name="acao" value="criar">
+                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <div class="modal-header border-0">
                     <h5 class="modal-title">Novo utilizador</h5>
                     <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
@@ -332,6 +345,7 @@ $alertMessage = $_GET['message'] ?? '';
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
                     <input type="hidden" name="id" value="<?php echo (int) $utilizador['id']; ?>">
+                    <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                     <div class="modal-header border-0">
                         <h5 class="modal-title">Editar utilizador</h5>
                         <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">

@@ -7,11 +7,23 @@ require_once __DIR__ . '/funcoes/turnos_funcoes.php';
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'turnos.gerir');
 
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+}
+
 $temTabelaTurnoPeriodos = fe_table_exists($conn, 'turno_periodos');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ac_require_permission($conn, $utilizadorSessao, 'turnos.gerir');
     $acao = $_POST['acao'] ?? '';
+
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        redirect_with_message('danger', 'Token CSRF inválido.');
+    }
 
     if ($acao === 'criar') {
         $nome = get_post_value('nome');
@@ -246,6 +258,7 @@ $alertMessage = $_GET['message'] ?? '';
         <div class="modal-dialog modal-lg" role="document">
             <form method="post" class="modal-content needs-validation" novalidate>
                 <input type="hidden" name="acao" value="criar">
+                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <div class="modal-header border-0">
                     <h5 class="modal-title">Adicionar turno</h5>
                     <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
@@ -268,6 +281,7 @@ $alertMessage = $_GET['message'] ?? '';
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>
                     <input type="hidden" name="id" value="<?php echo (int) $turno['id']; ?>">
+                    <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                     <div class="modal-header border-0">
                         <h5 class="modal-title">Editar turno</h5>
                         <button type="button" class="close" data-bs-dismiss="modal" aria-label="Fechar">
@@ -307,15 +321,52 @@ $alertMessage = $_GET['message'] ?? '';
                     }
                 }
             });
-                $('.needs-validation').on('submit', function (event) {
-                    if (!this.checkValidity()) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                    }
 
-                    $(this).addClass('was-validated');
-                });
+            function timeToMinutes(value) {
+                var parts = String(value || '').split(':');
+                if (parts.length < 2) {
+                    return null;
+                }
+
+                var hours = parseInt(parts[0], 10);
+                var minutes = parseInt(parts[1], 10);
+                if (isNaN(hours) || isNaN(minutes)) {
+                    return null;
+                }
+
+                return (hours * 60) + minutes;
+            }
+
+            function updateHorasPrevistas($form) {
+                var entrada = timeToMinutes($form.find('.js-turno-hora-entrada').val());
+                var saida = timeToMinutes($form.find('.js-turno-hora-saida').val());
+                var $horas = $form.find('.js-turno-horas-previstas');
+
+                if (entrada === null || saida === null) {
+                    return;
+                }
+
+                var minutos = saida - entrada;
+                if (minutos <= 0) {
+                    minutos += 24 * 60;
+                }
+
+                $horas.val((minutos / 60).toFixed(2));
+            }
+
+            $('.js-turno-hora-entrada, .js-turno-hora-saida').on('change input', function () {
+                updateHorasPrevistas($(this).closest('form'));
             });
+
+            $('.needs-validation').on('submit', function (event) {
+                if (!this.checkValidity()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+
+                $(this).addClass('was-validated');
+            });
+        });
     </script>
 </body>
 

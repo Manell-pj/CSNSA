@@ -83,7 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $entidadePadrao = 'Centro Social Nossa Senhora Auxiliador';
         $entidade = get_post_value('entidade') ?: $entidadePadrao;
         $nome = get_post_value('nome');
-        $numeroMecanografico = nullable_text($_POST['numero_mecanografico'] ?? '');
+        $numeroMecanograficoRaw = trim($_POST['numero_mecanografico'] ?? '');
+        $numeroMecanografico = nullable_int($numeroMecanograficoRaw);
         $dataFicha = nullable_date($_POST['data_ficha'] ?? '');
         $email = nullable_text($_POST['email'] ?? '');
         $telefoneRaw = $_POST['telefone'] ?? '';
@@ -92,8 +93,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $funcao = nullable_text($_POST['funcao'] ?? '');
         $dataNascimento = nullable_date($_POST['data_nascimento'] ?? '');
         $categoria = nullable_text($_POST['categoria_profissional'] ?? '');
-        $setorId = null;
         $equipaId = $temEquipas ? nullable_int($_POST['equipa_id'] ?? '') : null;
+        $setorId = null;
+        if ($equipaId !== null && fe_column_exists($conn, 'equipas', 'setor_id')) {
+            $stmtSetor = mysqli_prepare($conn, 'SELECT setor_id FROM equipas WHERE id = ? LIMIT 1');
+            mysqli_stmt_bind_param($stmtSetor, 'i', $equipaId);
+            mysqli_stmt_execute($stmtSetor);
+            $equipaSelecionada = mysqli_fetch_assoc(mysqli_stmt_get_result($stmtSetor));
+            mysqli_stmt_close($stmtSetor);
+            $setorId = isset($equipaSelecionada['setor_id']) ? (int) $equipaSelecionada['setor_id'] : null;
+        }
         $dataAdmissao = nullable_date($_POST['data_admissao'] ?? '');
         $diuturnidadeDataBase = nullable_date($_POST['diuturnidade_data_base'] ?? '');
         $diuturnidadeCicloAnos = nullable_int($_POST['diuturnidade_ciclo_anos'] ?? '');
@@ -215,6 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'dados_fixos_quantidade' => nullable_text($_POST['dados_fixos_quantidade'] ?? ''),
             'dados_fixos_valor' => nullable_decimal($_POST['dados_fixos_valor'] ?? ''),
             'pin_ponto' => $pinPonto,
+            'codigo_picagem' => $pinPonto,
             'codigo_cartao' => $codigoCartao,
             'codigo_biometrico' => $codigoBiometrico,
             'estado' => $estado,
@@ -222,6 +232,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($nome === '') {
             redirect_with_message('danger', 'Preencha o nome do funcionário.');
+        }
+
+        if (!has_max_digits($numeroMecanograficoRaw, 10)) {
+            redirect_with_message('danger', 'O numero mecanografico so pode conter algarismos.');
+        }
+
+        if ($numeroMecanografico !== null && $numeroMecanografico <= 0) {
+            redirect_with_message('danger', 'O numero mecanografico deve ser superior a zero.');
         }
 
         $requiredLabels = [
@@ -439,7 +457,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $equipas = [];
 if ($temEquipas) {
-    $stmt = mysqli_prepare($conn, 'SELECT id, nome FROM equipas WHERE ativo = 1 ORDER BY nome ASC');
+    $selectSetor = fe_column_exists($conn, 'equipas', 'setor_id') ? ', setor_id' : '';
+    $stmt = mysqli_prepare($conn, "SELECT id, nome$selectSetor FROM equipas WHERE ativo = 1 ORDER BY nome ASC");
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($result)) {
@@ -878,6 +897,7 @@ $alertMessage = $_GET['message'] ?? '';
                 if ($wizard.find('.js-tipo-contrato').val()) {
                     fillContrato($wizard.find('.js-tipo-contrato'));
                 }
+                fillPinPonto($wizard);
                 refreshWizard($wizard);
             }
 
@@ -889,6 +909,7 @@ $alertMessage = $_GET['message'] ?? '';
                 if ($wizard.find('.js-tipo-contrato').val()) {
                     fillContrato($wizard.find('.js-tipo-contrato'));
                 }
+                fillPinPonto($wizard);
                 refreshWizard($wizard);
             });
 
@@ -954,6 +975,10 @@ $alertMessage = $_GET['message'] ?? '';
             });
 
             $(document).on('input', '.js-numero-mecanografico', function () {
+                fillPinPonto($(this).closest('.funcionario-wizard'));
+            });
+
+            $(document).on('change', '.js-numero-mecanografico', function () {
                 fillPinPonto($(this).closest('.funcionario-wizard'));
             });
 

@@ -127,13 +127,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'corrigi
     }
 
     // update original record but keep audit fields
+    $setParts = ['tipo = ?', 'data_hora = ?'];
+    $types = 'ss';
+    $params = [$novoTipo, $novaSql];
+
     if (fe_column_exists($conn, 'registos_ponto', 'data_referencia')) {
-        $u = mysqli_prepare($conn, 'UPDATE registos_ponto SET tipo = ?, data_hora = ?, data_referencia = ?, motivo_correcao = ?, atualizado_por = ?, registo_manual = 1 WHERE id = ?');
-        mysqli_stmt_bind_param($u, 'ssssii', $novoTipo, $novaSql, $novaDataReferencia, $motivo, $utilizadorSessao['id'], $registoId);
-    } else {
-        $u = mysqli_prepare($conn, 'UPDATE registos_ponto SET tipo = ?, data_hora = ?, motivo_correcao = ?, atualizado_por = ?, registo_manual = 1 WHERE id = ?');
-        mysqli_stmt_bind_param($u, 'ssisi', $novoTipo, $novaSql, $motivo, $utilizadorSessao['id'], $registoId);
+        $setParts[] = 'data_referencia = ?';
+        $types .= 's';
+        $params[] = $novaDataReferencia;
     }
+
+    if (fe_column_exists($conn, 'registos_ponto', 'motivo_correcao')) {
+        $setParts[] = 'motivo_correcao = ?';
+        $types .= 's';
+        $params[] = $motivo;
+    }
+
+    if (fe_column_exists($conn, 'registos_ponto', 'atualizado_por')) {
+        $setParts[] = 'atualizado_por = ?';
+        $types .= 'i';
+        $params[] = (int) $utilizadorSessao['id'];
+    }
+
+    if (fe_column_exists($conn, 'registos_ponto', 'registo_manual')) {
+        $setParts[] = 'registo_manual = 1';
+    }
+
+    $params[] = $registoId;
+    $types .= 'i';
+    $u = mysqli_prepare($conn, 'UPDATE registos_ponto SET ' . implode(', ', $setParts) . ' WHERE id = ?');
+    mysqli_stmt_bind_param($u, $types, ...$params);
     mysqli_stmt_execute($u);
     mysqli_stmt_close($u);
 

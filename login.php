@@ -5,6 +5,10 @@ require_once __DIR__ . '/funcoes/login_funcoes.php';
 
 redirect_if_logged_in($conn);
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+}
+
 $erro = '';
 $email = trim($_POST['email'] ?? '');
 $redirect = auth_safe_redirect($_GET['redirect'] ?? $_POST['redirect'] ?? 'principal.php');
@@ -19,7 +23,9 @@ if ($result) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
 
-    if ($email === '' || $password === '') {
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        $erro = 'Token CSRF inválido.';
+    } elseif ($email === '' || $password === '') {
         $erro = 'Indique o email e a palavra-passe.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $erro = 'Indique um email válido.';
@@ -68,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="post" class="login-form">
+                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <input type="hidden" name="redirect" value="<?php echo e($redirect); ?>">
                 <div class="form-group">
                     <label for="email"><b>Email</b></label>

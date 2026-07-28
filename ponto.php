@@ -8,6 +8,14 @@ require_once __DIR__ . '/funcoes/calcular_resumo_diario_assiduidade.php';
 $utilizadorSessao = require_login($conn);
 ac_require_permission($conn, $utilizadorSessao, 'ponto.consultar');
 
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+}
+
 $missingTables = [];
 
 foreach (['funcionarios', 'registos_ponto'] as $table) {
@@ -17,9 +25,18 @@ foreach (['funcionarios', 'registos_ponto'] as $table) {
 }
 
 $temFuncionarioRegisto = empty($missingTables) && fe_column_exists($conn, 'registos_ponto', 'funcionario_id');
+$temRegistoManual = $temFuncionarioRegisto && fe_column_exists($conn, 'registos_ponto', 'registo_manual');
+$temCodigoPicagem = empty($missingTables) && fe_column_exists($conn, 'funcionarios', 'codigo_picagem');
+$temCodigoPicagemHash = empty($missingTables) && fe_column_exists($conn, 'funcionarios', 'codigo_picagem_hash');
+$temCodigoPicagemTentativas = empty($missingTables) && fe_column_exists($conn, 'funcionarios', 'codigo_picagem_tentativas');
+$temCodigoPicagemBloqueio = empty($missingTables) && fe_column_exists($conn, 'funcionarios', 'codigo_picagem_bloqueado_ate');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['registar_ponto','registar_por_codigo'], true)) {
     ac_require_permission($conn, $utilizadorSessao, 'ponto.corrigir');
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        redirect_with_message('danger', 'Token CSRF inválido.');
+    }
+
     if (!$temFuncionarioRegisto) {
         redirect_with_message('danger', 'Execute a migração antes de registar ponto por funcionário.');
     }
@@ -27,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
 
     // suporte a registo por codigo de picagem
     if ($acao === 'registar_por_codigo') {
+        if (!$temCodigoPicagem) {
+            redirect_with_message('danger', 'Execute a migração antes de registar ponto por código.');
+        }
+
         $codigo = trim($_POST['codigo'] ?? '');
         $tipo = $_POST['tipo'] ?? '';
         $dataHora = trim($_POST['data_hora'] ?? '');
@@ -46,7 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
         $observacoes = $observacoes === '' ? null : $observacoes;
 
         // Localizar funcionário por código (hash se disponível)
-        $stmt = mysqli_prepare($conn, 'SELECT id, codigo_picagem_hash, codigo_picagem_tentativas, codigo_picagem_bloqueado_ate FROM funcionarios WHERE estado = "ativo" AND codigo_picagem = ? LIMIT 1');
+        $selectCodigo = 'id';
+        $selectCodigo .= $temCodigoPicagemHash ? ', codigo_picagem_hash' : ', NULL AS codigo_picagem_hash';
+        $selectCodigo .= $temCodigoPicagemTentativas ? ', codigo_picagem_tentativas' : ', 0 AS codigo_picagem_tentativas';
+        $selectCodigo .= $temCodigoPicagemBloqueio ? ', codigo_picagem_bloqueado_ate' : ', NULL AS codigo_picagem_bloqueado_ate';
+        $stmt = mysqli_prepare($conn, "SELECT $selectCodigo FROM funcionarios WHERE estado = 'ativo' AND codigo_picagem = ? LIMIT 1");
         mysqli_stmt_bind_param($stmt, 's', $codigo);
         mysqli_stmt_execute($stmt);
         $res = mysqli_stmt_get_result($stmt);
@@ -64,10 +89,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
                 if (password_verify($codigo, $row['codigo_picagem_hash'])) {
                     $funcionarioId = (int)$row['id'];
                     // reset attempts
-                    $s2 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = 0, codigo_picagem_bloqueado_ate = NULL WHERE id = ?');
-                    mysqli_stmt_bind_param($s2, 'i', $funcionarioId);
-                    mysqli_stmt_execute($s2);
-                    mysqli_stmt_close($s2);
+                    if ($temCodigoPicagemTentativas && $temCodigoPicagemBloqueio) {
+                        $s2 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = 0, codigo_picagem_bloqueado_ate = NULL WHERE id = ?');
+                        mysqli_stmt_bind_param($s2, 'i', $funcionarioId);
+                        mysqli_stmt_execute($s2);
+                        mysqli_stmt_close($s2);
+                    }
                 } else {
                     // increment attempts
                     $fid = (int)$row['id'];
@@ -76,10 +103,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
                     if ($attempts >= 5) {
                         $lockedUntil = (new DateTime('+15 minutes'))->format('Y-m-d H:i:s');
                     }
-                    $s3 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = ?, codigo_picagem_bloqueado_ate = ? WHERE id = ?');
-                    mysqli_stmt_bind_param($s3, 'isi', $attempts, $lockedUntil, $fid);
-                    mysqli_stmt_execute($s3);
-                    mysqli_stmt_close($s3);
+                    if ($temCodigoPicagemTentativas && $temCodigoPicagemBloqueio) {
+                        $s3 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = ?, codigo_picagem_bloqueado_ate = ? WHERE id = ?');
+                        mysqli_stmt_bind_param($s3, 'isi', $attempts, $lockedUntil, $fid);
+                        mysqli_stmt_execute($s3);
+                        mysqli_stmt_close($s3);
+                    }
                     redirect_with_message('danger', 'Código inválido. Tentativa registada.');
                 }
             } else {
@@ -96,8 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
                     redirect_with_message('danger', 'Código inválido.');
                 }
             }
-        } else {
-            $stmtHash = mysqli_prepare($conn, 'SELECT id, codigo_picagem_hash, codigo_picagem_bloqueado_ate FROM funcionarios WHERE estado = "ativo" AND codigo_picagem_hash IS NOT NULL');
+        } elseif ($temCodigoPicagemHash) {
+            $selectHash = 'id, codigo_picagem_hash';
+            $selectHash .= $temCodigoPicagemBloqueio ? ', codigo_picagem_bloqueado_ate' : ', NULL AS codigo_picagem_bloqueado_ate';
+            $stmtHash = mysqli_prepare($conn, "SELECT $selectHash FROM funcionarios WHERE estado = 'ativo' AND codigo_picagem_hash IS NOT NULL");
             mysqli_stmt_execute($stmtHash);
             $resHash = mysqli_stmt_get_result($stmtHash);
             while ($hashRow = mysqli_fetch_assoc($resHash)) {
@@ -111,16 +142,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
                 }
 
                 $funcionarioId = (int) $hashRow['id'];
-                $s2 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = 0, codigo_picagem_bloqueado_ate = NULL WHERE id = ?');
-                mysqli_stmt_bind_param($s2, 'i', $funcionarioId);
-                mysqli_stmt_execute($s2);
-                mysqli_stmt_close($s2);
+                if ($temCodigoPicagemTentativas && $temCodigoPicagemBloqueio) {
+                    $s2 = mysqli_prepare($conn, 'UPDATE funcionarios SET codigo_picagem_tentativas = 0, codigo_picagem_bloqueado_ate = NULL WHERE id = ?');
+                    mysqli_stmt_bind_param($s2, 'i', $funcionarioId);
+                    mysqli_stmt_execute($s2);
+                    mysqli_stmt_close($s2);
+                }
                 break;
             }
             mysqli_stmt_close($stmtHash);
 
-            if ($funcionarioId <= 0)
-            redirect_with_message('danger', 'Código inválido.');
+            if ($funcionarioId <= 0) {
+                redirect_with_message('danger', 'Código inválido.');
+            }
         }
     } else {
         $funcionarioId = (int) ($_POST['funcionario_id'] ?? 0);
@@ -200,17 +234,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['acao'] ?? ''), ['
     $origem = ($acao === 'registar_por_codigo') ? 'dispositivo' : 'manual';
     $registoManual = ($acao === 'registar_por_codigo') ? 0 : 1;
 
+    $columns = ['funcionario_id', 'tipo', 'data_hora'];
+    $placeholders = ['?', '?', '?'];
+    $types = 'iss';
+    $params = [$funcionarioId, $tipo, $dataHoraSql];
+
     if ($temDataReferencia) {
-        $stmt = mysqli_prepare($conn, "INSERT INTO registos_ponto
-            (funcionario_id, tipo, data_hora, data_referencia, origem, estado, observacoes, registo_manual)
-            VALUES (?, ?, ?, ?, ?, 'valido', ?, ?)");
-        mysqli_stmt_bind_param($stmt, 'isssssi', $funcionarioId, $tipo, $dataHoraSql, $dataReferencia, $origem, $observacoes, $registoManual);
-    } else {
-        $stmt = mysqli_prepare($conn, "INSERT INTO registos_ponto
-            (funcionario_id, tipo, data_hora, origem, estado, observacoes, registo_manual)
-            VALUES (?, ?, ?, ?, 'valido', ?, ?)");
-        mysqli_stmt_bind_param($stmt, 'issssi', $funcionarioId, $tipo, $dataHoraSql, $origem, $observacoes, $registoManual);
+        $columns[] = 'data_referencia';
+        $placeholders[] = '?';
+        $types .= 's';
+        $params[] = $dataReferencia;
     }
+
+    $columns[] = 'origem';
+    $placeholders[] = '?';
+    $types .= 's';
+    $params[] = $origem;
+
+    $columns[] = 'estado';
+    $placeholders[] = "'valido'";
+
+    $columns[] = 'observacoes';
+    $placeholders[] = '?';
+    $types .= 's';
+    $params[] = $observacoes;
+
+    if ($temRegistoManual) {
+        $columns[] = 'registo_manual';
+        $placeholders[] = '?';
+        $types .= 'i';
+        $params[] = $registoManual;
+    }
+
+    $stmt = mysqli_prepare($conn, 'INSERT INTO registos_ponto (`' . implode('`, `', $columns) . '`) VALUES (' . implode(', ', $placeholders) . ')');
+    mysqli_stmt_bind_param($stmt, $types, ...$params);
 
     mysqli_stmt_execute($stmt);
     $insertId = mysqli_insert_id($conn);
@@ -333,6 +390,7 @@ $alertMessage = $_GET['message'] ?? '';
                                 <div class="card-body">
                                     <form method="post" class="needs-validation" novalidate>
                                         <input type="hidden" name="acao" value="registar_ponto">
+                                        <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                                         <div class="mb-3">
                                             <label class="form-label">Funcionário *</label>
                                             <select name="funcionario_id" class="form-select" required <?php echo !$temFuncionarioRegisto ? 'disabled' : ''; ?>>

@@ -1,6 +1,11 @@
 <?php
 
-function e($v){ return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+if (!function_exists('e')) {
+    function e($v)
+    {
+        return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    }
+}
 
 function verificar_ponto_recalcular_resumos($conn, $funcionarioId, $dataOriginal, $dataNova)
 {

@@ -219,6 +219,10 @@ function escala_mensal_processar_post($conn, $contexto, $missingTables)
 
     $baseParams = escala_mensal_base_params($contexto);
 
+    if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
+        escala_mensal_redirect('danger', 'Token CSRF inválido.', $baseParams);
+    }
+
     if (!empty($missingTables)) {
         escala_mensal_redirect('danger', 'Execute primeiro a migration SQL da adaptação para lar de idosos.', $baseParams);
     }
