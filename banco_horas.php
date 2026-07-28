@@ -173,12 +173,6 @@ foreach ($funcionarios as $funcionario) {
                                         Filtrar
                                     </button>
                                 </div>
-                                <div class="col-md-3">
-                                    <a class="btn btn-secondary w-100" href="relatorios_horas.php?ano=<?php echo (int) $ano; ?>&mes=<?php echo (int) $mes; ?>">
-                                        <i class="fa fa-file-alt"></i>
-                                        Relatório mensal
-                                    </a>
-                                </div>
                             </form>
                         </div>
                     </div>

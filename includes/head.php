@@ -29,4 +29,9 @@
   <link rel="stylesheet" href="assets/css/plugins.min.css" />
   <link rel="stylesheet" href="assets/css/kaiadmin.min.css" />
 
+  <?php if (!empty($headExtraStyle)): ?>
+    <style>
+      <?php echo $headExtraStyle; ?>
+    </style>
+  <?php endif; ?>
 </head>

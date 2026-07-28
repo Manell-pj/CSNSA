@@ -91,12 +91,18 @@ foreach ($setores as $setor) {
     }
 }
 $mesAnoLabel = month_name($mes) . ' ' . (int) $ano;
-$totalColunasEscala = $diasNoMes + 2;
+$totalColunasEscala = $diasNoMes + 3;
 $hojeAno = (int) date('Y');
 $hojeMes = (int) date('n');
 $hojeDia = (int) date('j');
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
+$headExtraStyle = '
+    .escala-print-area,
+    .escala-print-logo {
+        display: none;
+    }
+';
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -144,7 +150,131 @@ $alertMessage = $_GET['message'] ?? '';
                         </div>
                     <?php endif; ?>
 
+                    <section id="areaImpressaoEscala" class="escala-print-area" aria-label="Impressão da escala mensal">
+                        <header class="escala-print-header">
+                            <div class="escala-print-logo-wrap">
+                                <img src="assets/img/csnsa/logo-nsa.png" alt="Centro Social Nossa Senhora Auxiliadora" class="escala-print-logo">
+                            </div>
+                            <div class="escala-print-title">
+                                <div class="escala-print-instituicao">Centro Social Nossa Senhora Auxiliadora</div>
+                                <div class="escala-print-nome">Escala Mensal</div>
+                                <div class="escala-print-periodo"><?php echo e($mesAnoLabel); ?></div>
+                            </div>
+                            <div class="escala-print-contexto">
+                                <span>Setor: <strong><?php echo e($setorSelecionadoNome); ?></strong></span>
+                                <span>Equipa: <strong><?php echo e($equipaSelecionadaNome); ?></strong></span>
+                                <span><?php echo (int) $diasNoMes; ?> dias</span>
+                            </div>
+                        </header>
+
+                        <?php if (!empty($funcionarios)): ?>
+                            <table class="escala-print-table" style="--dias-mes: <?php echo (int) $diasNoMes; ?>;">
+                                <colgroup>
+                                    <col class="print-col-funcionario">
+                                    <col class="print-col-categoria">
+                                    <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
+                                        <col class="print-col-dia">
+                                    <?php endfor; ?>
+                                </colgroup>
+                                <thead>
+                                    <tr class="print-weekdays-row">
+                                        <th class="print-funcionario-header" rowspan="2">Funcionário</th>
+                                        <th class="print-categoria-header" rowspan="2">Categoria</th>
+                                        <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
+                                            <?php
+                                            $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
+                                            $diaSemana = weekday_short($data);
+                                            $classesDiaPrint = [];
+                                            if (in_array(date('N', strtotime($data)), [6, 7], true)) {
+                                                $classesDiaPrint[] = 'print-fim-semana';
+                                            }
+                                            ?>
+                                            <th class="print-dia-header <?php echo e(implode(' ', $classesDiaPrint)); ?>">
+                                                <?php echo e(substr($diaSemana, 0, 1)); ?>
+                                            </th>
+                                        <?php endfor; ?>
+                                    </tr>
+                                    <tr class="print-days-row">
+                                        <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
+                                            <?php
+                                            $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
+                                            $classesDiaPrint = [];
+                                            if (in_array(date('N', strtotime($data)), [6, 7], true)) {
+                                                $classesDiaPrint[] = 'print-fim-semana';
+                                            }
+                                            ?>
+                                            <th class="print-dia-numero <?php echo e(implode(' ', $classesDiaPrint)); ?>">
+                                                <?php echo (int) $dia; ?>
+                                            </th>
+                                        <?php endfor; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($funcionarios as $funcionario): ?>
+                                        <tr>
+                                            <th class="print-funcionario"><?php echo e($funcionario['nome']); ?></th>
+                                            <td class="print-categoria"><?php echo e($funcionario['funcao'] ?: '-'); ?></td>
+                                            <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
+                                                <?php
+                                                $registo = $escalaGuardada[(int) $funcionario['id']][$dia] ?? [];
+                                                $tipoDia = $registo['tipo_dia'] ?? 'turno';
+                                                $turnoSelecionado = (int) ($registo['turno_id'] ?? 0);
+                                                $folgaTrabalhada = (int) ($registo['folga_trabalhada'] ?? 0) === 1;
+                                                $mostraTurnoNoDia = $tipoDia === 'turno' || $tipoDia === 'substituicao' || $folgaTrabalhada;
+                                                $turnoInfo = $mostraTurnoNoDia ? ($turnosById[$turnoSelecionado] ?? null) : null;
+                                                $codigoTurno = $turnoInfo ? obterCodigoVisualTurno($turnoInfo) : '';
+                                                $codigoDia = $codigoTurno ?: ($tipoDia === 'turno' ? '-' : ($codigosTipoDia[$tipoDia] ?? '-'));
+                                                $classesCelulaPrint = ['print-tipo-' . $tipoDia];
+                                                $dataCelula = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
+                                                if (in_array(date('N', strtotime($dataCelula)), [6, 7], true)) {
+                                                    $classesCelulaPrint[] = 'print-fim-semana';
+                                                }
+                                                if ($folgaTrabalhada) {
+                                                    $classesCelulaPrint[] = 'print-folga-trabalhada';
+                                                }
+                                                ?>
+                                                <td class="print-dia-cell <?php echo e(implode(' ', $classesCelulaPrint)); ?>">
+                                                    <?php echo e($codigoDia); ?><?php echo $tipoDia === 'substituicao' ? 'S' : ''; ?><?php echo $folgaTrabalhada ? '+' : ''; ?>
+                                                </td>
+                                            <?php endfor; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+
+                            <section class="escala-print-legendas" aria-label="Legendas da escala">
+                                <div class="escala-print-legenda-bloco">
+                                    <h5>Horários</h5>
+                                    <table>
+                                        <tbody>
+                                            <?php foreach ($turnos as $t): ?>
+                                                <tr>
+                                                    <th><?php echo e(obterCodigoVisualTurno($t)); ?></th>
+                                                    <td><?php echo e(substr($t['hora_entrada'], 0, 5) . ' às ' . substr($t['hora_saida'], 0, 5)); ?></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="escala-print-legenda-bloco">
+                                    <h5>Estados</h5>
+                                    <table>
+                                        <tbody>
+                                            <tr><th>F</th><td>Folga</td></tr>
+                                            <tr><th>FE</th><td>Férias</td></tr>
+                                            <tr><th>A</th><td>Falta</td></tr>
+                                            <tr><th>B</th><td>Baixa</td></tr>
+                                            <tr><th>S</th><td>Substituição</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        <?php endif; ?>
+                    </section>
+
+                    <div class="escala-screen-area">
                     <section class="escala-folha-header mb-3">
+                        <img src="assets/img/csnsa/logo-nsa.png" alt="Centro Social Nossa Senhora Auxiliadora" class="escala-print-logo">
                         <div>
                             <div class="escala-instituicao">Centro Social Nossa Senhora Auxiliadora</div>
                             <h2>Escala Mensal</h2>
@@ -200,7 +330,7 @@ $alertMessage = $_GET['message'] ?? '';
                             <div class="escala-paper-actions">
                                 <strong>Horários - Serviços Comuns - <?php echo e($mesAnoLabel); ?></strong>
                                 <span class="escala-selection-count text-muted">0 selecionados</span>
-                                <button type="button" class="btn btn-light btn-sm escala-print-btn" onclick="window.print()" title="Imprimir escala">
+                                <button type="button" class="btn btn-light btn-sm escala-print-btn" onclick="imprimirEscalaMensal()" title="Imprimir escala">
                                     <i class="fa fa-print"></i>
                                     Imprimir
                                 </button>
@@ -220,10 +350,11 @@ $alertMessage = $_GET['message'] ?? '';
                                     </div>
                                 <?php else: ?>
                                     <div class="table-responsive escala-wrapper">
-                                        <table class="table table-bordered table-sm align-middle escala-table">
+                                        <table class="table table-bordered table-sm align-middle escala-table" style="--dias-mes: <?php echo (int) $diasNoMes; ?>;">
                                             <colgroup>
                                                 <col class="escala-col-select">
                                                 <col class="escala-col-funcionario">
+                                                <col class="escala-col-categoria">
                                                 <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                     <col class="escala-col-dia">
                                                 <?php endfor; ?>
@@ -232,6 +363,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                 <tr>
                                                     <th class="escala-select-col"><input type="checkbox" id="select_all_rows"></th>
                                                     <th class="escala-sticky-col escala-funcionario-col">Funcionário</th>
+                                                    <th class="escala-categoria-col">Categoria</th>
                                                     <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                         <?php
                                                         $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
@@ -276,6 +408,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                                 <?php endif; ?>
                                                             </small>
                                                         </th>
+                                                        <td class="escala-categoria-col"><?php echo e($funcionario['funcao'] ?: '-'); ?></td>
                                                         <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                             <?php
                                                             $registo = $escalaGuardada[(int) $funcionario['id']][$dia] ?? [];
@@ -393,9 +526,14 @@ $alertMessage = $_GET['message'] ?? '';
                             </div>
                         </section>
                     </form>
+                    </div>
                 </div>
             </div>
-    <?php include 'includes/scripts.php'; ?>
+
+            <?php include 'includes/footer.php'; ?>
+        </div>
+    </div>
+
     <!-- Bulk assign modal -->
     <div class="modal fade" id="modalBulkAssign" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog" role="document">
@@ -522,6 +660,14 @@ $alertMessage = $_GET['message'] ?? '';
             font-weight: 400;
         }
 
+        .escala-print-logo {
+            display: none;
+        }
+
+        .escala-print-area {
+            display: none;
+        }
+
         .escala-paper-actions {
             align-items: center;
             border-bottom: 1px solid #555;
@@ -572,6 +718,11 @@ $alertMessage = $_GET['message'] ?? '';
 
         .escala-col-funcionario {
             width: 190px;
+        }
+
+        .escala-col-categoria,
+        .escala-categoria-col {
+            display: none;
         }
 
         .escala-col-dia {
@@ -809,75 +960,326 @@ $alertMessage = $_GET['message'] ?? '';
             }
         }
 
+        @page {
+            margin: 6mm;
+            size: A4 landscape;
+        }
+
         @media print {
             @page {
-                margin: 10mm;
-                size: landscape;
+                margin: 6mm;
+                size: A4 landscape;
+            }
+
+            html,
+            body {
+                background: #fff !important;
+                height: auto !important;
+                margin: 0 !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                width: auto !important;
             }
 
             body {
-                background: #fff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
 
             .sidebar,
+            .main-sidebar,
             .main-header,
             .page-header,
+            .breadcrumbs,
+            .escala-screen-area,
             .escala-filtros-card,
             .escala-paper-actions,
             .footer,
+            footer,
+            nav,
+            button,
             .btn,
-            .escala-select-col,
-            .escala-editor {
+            .alert,
+            .modal,
+            .modal-backdrop,
+            .dropdown-menu,
+            .tooltip {
                 display: none !important;
             }
 
+            .wrapper,
             .main-panel,
-            .page-inner,
-            .container-fluid {
+            .content,
+            .container,
+            .container-fluid,
+            .page-inner {
+                background: #fff !important;
+                box-shadow: none !important;
+                display: block !important;
+                float: none !important;
+                height: auto !important;
                 margin: 0 !important;
+                max-width: none !important;
+                min-height: 0 !important;
+                overflow: visible !important;
                 padding: 0 !important;
+                position: static !important;
+                transform: none !important;
                 width: 100% !important;
             }
 
-            .escala-paper,
-            .escala-folha-header {
-                border-color: #555 !important;
+            #areaImpressaoEscala {
+                background: #fff !important;
                 box-shadow: none !important;
+                box-sizing: border-box !important;
+                color: #111 !important;
+                display: block !important;
+                font-family: Arial, Helvetica, sans-serif !important;
+                margin: 0 !important;
+                max-width: none !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                position: static !important;
+                width: 100% !important;
             }
 
-            .escala-wrapper {
-                overflow: visible;
+            .escala-print-header {
+                align-items: center !important;
+                border: 0.3mm solid #333 !important;
+                border-bottom: 0 !important;
+                box-sizing: border-box !important;
+                display: grid !important;
+                grid-template-columns: 18mm 1fr 58mm !important;
+                min-height: 18mm !important;
+                padding: 1.4mm 2mm !important;
+                width: 100% !important;
             }
 
-            .escala-table {
-                font-size: 9px;
-                width: max-content;
+            .escala-print-logo-wrap {
+                align-items: center !important;
+                display: flex !important;
+                justify-content: center !important;
             }
 
-            .escala-table th,
-            .escala-table td,
-            .escala-legenda-table th,
-            .escala-legenda-table td {
-                border-color: #555 !important;
+            .escala-print-logo {
+                display: block !important;
+                height: auto !important;
+                max-height: 14mm !important;
+                max-width: 14mm !important;
+                object-fit: contain !important;
+                width: auto !important;
             }
 
-            .escala-cell-trigger {
-                height: 24px;
-                line-height: 24px;
+            .escala-print-title {
+                line-height: 1.05 !important;
+                text-align: center !important;
+                text-transform: uppercase !important;
             }
 
-            .escala-cell,
-            .escala-funcionario {
-                height: 24px;
+            .escala-print-instituicao {
+                font-size: 10.5pt !important;
+                font-weight: 700 !important;
             }
 
-            .escala-legenda-folha {
-                break-inside: avoid;
-                padding-top: 10px;
+            .escala-print-nome {
+                font-size: 9pt !important;
+                font-weight: 700 !important;
+                margin-top: 0.8mm !important;
+            }
+
+            .escala-print-periodo {
+                font-size: 8pt !important;
+                font-weight: 700 !important;
+                margin-top: 0.8mm !important;
+            }
+
+            .escala-print-contexto {
+                align-self: stretch !important;
+                border-left: 0.3mm solid #333 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                font-size: 6.4pt !important;
+                justify-content: center !important;
+                line-height: 1.15 !important;
+                padding-left: 2mm !important;
+                text-align: left !important;
+            }
+
+            .escala-print-table {
+                border-collapse: collapse !important;
+                border-spacing: 0 !important;
+                font-size: 7pt !important;
+                line-height: 1 !important;
+                margin: 0 !important;
+                table-layout: fixed !important;
+                width: 100% !important;
+            }
+
+            .print-col-funcionario {
+                width: 48mm !important;
+            }
+
+            .print-col-categoria {
+                width: 22mm !important;
+            }
+
+            .print-col-dia {
+                width: calc((100% - 70mm) / var(--dias-mes)) !important;
+            }
+
+            .escala-print-table thead {
+                display: table-header-group !important;
+            }
+
+            .escala-print-table tr {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+            }
+
+            .escala-print-table th,
+            .escala-print-table td {
+                border: 0.3mm solid #333 !important;
+                box-sizing: border-box !important;
+                height: 5.4mm !important;
+                overflow: hidden !important;
+                padding: 0.3mm 0.45mm !important;
+                text-align: center !important;
+                vertical-align: middle !important;
+                white-space: nowrap !important;
+            }
+
+            .escala-print-table thead th {
+                background: #d9d9d9 !important;
+                font-size: 6pt !important;
+                font-weight: 700 !important;
+                text-transform: uppercase !important;
+            }
+
+            .print-funcionario-header,
+            .print-categoria-header {
+                height: 7.2mm !important;
+                text-align: left !important;
+            }
+
+            .print-dia-header,
+            .print-dia-numero {
+                font-size: 5.8pt !important;
+                height: 3.6mm !important;
+                line-height: 1 !important;
+                padding: 0.15mm !important;
+            }
+
+            .print-funcionario,
+            .print-categoria {
+                font-size: 6.5pt !important;
+                font-weight: 600 !important;
+                line-height: 1.05 !important;
+                overflow-wrap: anywhere !important;
+                text-align: left !important;
+                white-space: normal !important;
+            }
+
+            .print-dia-cell {
+                font-size: 7.2pt !important;
+                font-weight: 700 !important;
+            }
+
+            .print-fim-semana {
+                background: #eeeeee !important;
+            }
+
+            .print-tipo-folga,
+            .print-tipo-ferias,
+            .print-tipo-falta,
+            .print-tipo-baixa,
+            .print-tipo-substituicao,
+            .print-tipo-licenca_amamentacao {
+                background: #f2f2f2 !important;
+            }
+
+            .print-tipo-falta,
+            .print-tipo-baixa {
+                background: #dedede !important;
+            }
+
+            .escala-print-legendas {
+                align-items: flex-start !important;
+                break-inside: avoid !important;
+                display: flex !important;
+                gap: 7mm !important;
+                margin-top: 2.2mm !important;
+                page-break-inside: avoid !important;
+            }
+
+            .escala-print-legenda-bloco {
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+            }
+
+            .escala-print-legenda-bloco h5 {
+                font-size: 6.6pt !important;
+                font-weight: 700 !important;
+                line-height: 1 !important;
+                margin: 0 0 0.8mm !important;
+                text-transform: uppercase !important;
+            }
+
+            .escala-print-legenda-bloco table {
+                border-collapse: collapse !important;
+                font-size: 6.2pt !important;
+                table-layout: fixed !important;
+                width: 52mm !important;
+            }
+
+            .escala-print-legenda-bloco th,
+            .escala-print-legenda-bloco td {
+                border: 0.25mm solid #333 !important;
+                height: 4.1mm !important;
+                line-height: 1 !important;
+                padding: 0.35mm 0.8mm !important;
+                white-space: nowrap !important;
+            }
+
+            .escala-print-legenda-bloco th {
+                background: #e6e6e6 !important;
+                text-align: center !important;
+                width: 13mm !important;
+            }
+
+            .escala-print-legenda-bloco td {
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                width: 39mm !important;
             }
         }
+
     </style>
+    <?php include 'includes/scripts.php'; ?>
     <script>
+        function imprimirEscalaMensal() {
+            var tituloOriginal = document.title;
+            var escapeEvent = $.Event('keydown');
+            escapeEvent.key = 'Escape';
+            $(document).trigger(escapeEvent);
+            $('.modal.show').each(function () {
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(this).hide();
+                } else {
+                    $(this).modal('hide');
+                }
+            });
+            $('.dropdown-menu.show, .tooltip.show').removeClass('show');
+            document.activeElement && document.activeElement.blur();
+            document.title = '';
+            window.setTimeout(function () {
+                window.print();
+                window.setTimeout(function () {
+                    document.title = tituloOriginal;
+                }, 500);
+            }, 50);
+        }
+
         $(document).ready(function () {
             var tipoCodigos = {
                 folga: 'F',
@@ -1092,10 +1494,6 @@ $alertMessage = $_GET['message'] ?? '';
             });
         });
     </script>
-
-            <?php include 'includes/footer.php'; ?>
-        </div>
-    </div>
 </body>
 
 </html>
