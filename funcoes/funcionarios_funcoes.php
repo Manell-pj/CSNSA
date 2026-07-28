@@ -144,6 +144,11 @@ function ensure_funcionarios_extended_schema($conn)
     mysqli_query($conn, "INSERT IGNORE INTO funcionario_tipos_contrato (codigo, nome, tipo_rendimento, taxa_irs) VALUES
         ('1', 'TRABALHO DEPENDENTE', 'A - TRABALHO DEPENDENTE', NULL)");
 
+    mysqli_query($conn, "ALTER TABLE `funcionarios` MODIFY `numero_mecanografico` VARCHAR(4) DEFAULT NULL");
+    if (fe_column_exists($conn, 'funcionarios', 'codigo_biometrico')) {
+        mysqli_query($conn, "ALTER TABLE `funcionarios` MODIFY `codigo_biometrico` VARCHAR(9) DEFAULT NULL");
+    }
+
     $columns = [
         'codigo_picagem' => "VARCHAR(80) DEFAULT NULL AFTER `equipa_id`",
         'codigo_picagem_hash' => "VARCHAR(255) DEFAULT NULL AFTER `codigo_picagem`",

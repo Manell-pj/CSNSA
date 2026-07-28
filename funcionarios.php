@@ -2,6 +2,8 @@
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
+require_once __DIR__ . '/includes/biometric_queue.php';
+require_once __DIR__ . '/includes/listagem_verificacao.php';
 require_once __DIR__ . '/funcoes/funcionarios_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
@@ -84,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $entidade = get_post_value('entidade') ?: $entidadePadrao;
         $nome = get_post_value('nome');
         $numeroMecanograficoRaw = trim($_POST['numero_mecanografico'] ?? '');
-        $numeroMecanografico = nullable_int($numeroMecanograficoRaw);
+        $numeroMecanografico = nullable_text($numeroMecanograficoRaw);
         $dataFicha = nullable_date($_POST['data_ficha'] ?? '');
         $email = nullable_text($_POST['email'] ?? '');
         $telefoneRaw = $_POST['telefone'] ?? '';
@@ -234,12 +236,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_with_message('danger', 'Preencha o nome do funcionário.');
         }
 
-        if (!has_max_digits($numeroMecanograficoRaw, 10)) {
-            redirect_with_message('danger', 'O numero mecanografico so pode conter algarismos.');
-        }
-
-        if ($numeroMecanografico !== null && $numeroMecanografico <= 0) {
-            redirect_with_message('danger', 'O numero mecanografico deve ser superior a zero.');
+        if (!has_max_digits($numeroMecanograficoRaw, 4)) {
+            redirect_with_message('danger', 'O numero mecanografico deve conter apenas algarismos e ter no maximo 4 digitos.');
         }
 
         $requiredLabels = [
@@ -324,6 +322,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_with_message('danger', 'O numero de beneficiario tem de ter exatamente 11 digitos.');
         }
 
+        if ($codigoBiometrico !== null && !has_max_digits($codigoBiometrico, 9)) {
+            redirect_with_message('danger', 'O codigo biometrico deve conter apenas algarismos e ter no maximo 9 digitos.');
+        }
+
         if ($cargaHoraria <= 0) {
             redirect_with_message('danger', 'A carga horaria semanal deve ser superior a zero.');
         }
@@ -347,6 +349,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_bind_param($stmt, 'ssiii', $dataNascimento, $diuturnidadeDataBase, $diuturnidadeCicloAnos, $diuturnidadeAtiva, $novoFuncionarioId);
                     mysqli_stmt_execute($stmt);
                     mysqli_stmt_close($stmt);
+                }
+
+                $biometricPayload = biometric_user_payload($novoFuncionarioId, $nome, $codigoBiometrico, $pinPonto);
+                if ($biometricPayload !== null) {
+                    biometric_queue_add($conn, 'upsert_user', $biometricPayload);
+                    redirect_with_message('success', 'Funcionário criado com sucesso. Sincronização biométrica colocada na fila.');
                 }
 
                 redirect_with_message('success', 'Funcionário criado com sucesso.');
@@ -374,6 +382,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_execute($stmt);
                 mysqli_stmt_close($stmt);
             }
+
+            $biometricPayload = biometric_user_payload($id, $nome, $codigoBiometrico, $pinPonto);
+            if ($biometricPayload !== null) {
+                biometric_queue_add($conn, 'upsert_user', $biometricPayload);
+                redirect_with_message('success', 'Funcionário atualizado com sucesso. Sincronização biométrica colocada na fila.');
+            }
+            biometric_queue_add($conn, 'delete_user', ['uid' => $id]);
 
             redirect_with_message('success', 'Funcionário atualizado com sucesso.');
         } catch (mysqli_sql_exception $e) {
@@ -412,6 +427,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
+            biometric_queue_add($conn, 'delete_user', ['uid' => $id]);
+
             redirect_with_message('success', 'Funcionário desativado com sucesso. Os registos históricos foram preservados.');
         } catch (mysqli_sql_exception $e) {
             redirect_with_message('danger', 'Não foi possível desativar o funcionário.');
@@ -447,6 +464,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
+
+            $stmt = mysqli_prepare($conn, 'SELECT nome, codigo_biometrico, pin_ponto FROM funcionarios WHERE id = ? LIMIT 1');
+            mysqli_stmt_bind_param($stmt, 'i', $id);
+            mysqli_stmt_execute($stmt);
+            $funcionarioReativado = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+            mysqli_stmt_close($stmt);
+
+            if ($funcionarioReativado) {
+                $biometricPayload = biometric_user_payload(
+                    $id,
+                    $funcionarioReativado['nome'],
+                    $funcionarioReativado['codigo_biometrico'] ?? null,
+                    $funcionarioReativado['pin_ponto'] ?? null
+                );
+                if ($biometricPayload !== null) {
+                    biometric_queue_add($conn, 'upsert_user', $biometricPayload);
+                }
+            }
 
             redirect_with_message('success', 'Funcionário reativado com sucesso.');
         } catch (mysqli_sql_exception $e) {
@@ -590,6 +625,9 @@ $alertMessage = $_GET['message'] ?? '';
                                                 </td>
                                                 <td>
                                                     <div class="form-button-action">
+                                                        <button type="button" class="btn btn-link btn-info btn-lg" data-bs-toggle="modal" data-bs-target="#modalVerificarFuncionario<?php echo (int) $funcionario['id']; ?>" title="Verificar campos">
+                                                            <i class="fa fa-eye"></i>
+                                                        </button>
                                                         <button type="button" class="btn btn-link btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalEditarFuncionario<?php echo (int) $funcionario['id']; ?>" title="Editar">
                                                             <i class="fa fa-edit"></i>
                                                         </button>
@@ -665,7 +703,31 @@ $alertMessage = $_GET['message'] ?? '';
         </div>
     </div>
 
+    <?php
+    $camposExcluidosVerificacaoFuncionario = ['password_hash'];
+    if (!$podeVerDadosSensiveis) {
+        $camposExcluidosVerificacaoFuncionario = array_merge($camposExcluidosVerificacaoFuncionario, [
+            'email',
+            'telefone',
+            'telemovel',
+            'data_nascimento',
+            'doc_identificacao',
+            'data_validade_doc',
+            'local_emissao',
+            'naturalidade',
+            'morada',
+            'localidade',
+            'codigo_postal',
+            'nif',
+            'nif_conjugue',
+            'seguranca_social_numero_beneficiario',
+            'iban',
+        ]);
+    }
+    ?>
     <?php foreach ($funcionarios as $funcionario): ?>
+        <?php lv_render_verification_modal('modalVerificarFuncionario' . (int) $funcionario['id'], 'Verificar funcionário - ' . ($funcionario['nome'] ?? ''), $funcionario, [], $camposExcluidosVerificacaoFuncionario); ?>
+
         <div class="modal fade" id="modalEditarFuncionario<?php echo (int) $funcionario['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-xl" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>

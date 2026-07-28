@@ -2,6 +2,7 @@
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/funcionarios_estado.php';
+require_once __DIR__ . '/includes/listagem_verificacao.php';
 require_once __DIR__ . '/funcoes/departamentos_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
@@ -283,6 +284,9 @@ $alertMessage = $_GET['message'] ?? '';
                                                 <td><?php echo (int) $departamento['total_ativos']; ?></td>
                                                 <td>
                                                     <div class="form-button-action d-flex gap-1">
+                                                        <button type="button" class="btn btn-link btn-info btn-lg" data-bs-toggle="modal" data-bs-target="#modalVerificarEquipa<?php echo (int) $departamento['id']; ?>" title="Verificar campos">
+                                                            <i class="fa fa-eye"></i>
+                                                        </button>
                                                         <button type="button" class="btn btn-link btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalEditarEquipa<?php echo (int) $departamento['id']; ?>" title="Editar">
                                                             <i class="fa fa-edit"></i>
                                                         </button>
@@ -354,6 +358,8 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
 
     <?php foreach ($departamentos as $departamento): ?>
+        <?php lv_render_verification_modal('modalVerificarEquipa' . (int) $departamento['id'], 'Verificar equipa - ' . ($departamento['nome'] ?? ''), $departamento); ?>
+
         <div class="modal fade" id="modalEditarEquipa<?php echo (int) $departamento['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>

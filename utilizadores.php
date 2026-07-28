@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/listagem_verificacao.php';
 require_once __DIR__ . '/funcoes/utilizadores_funcoes.php';
 
 $utilizadorSessao = require_login($conn);
@@ -274,6 +275,9 @@ $alertMessage = $_GET['message'] ?? '';
                                                 </td>
                                                 <td>
                                                     <div class="form-button-action">
+                                                        <button type="button" class="btn btn-link btn-info btn-lg" data-bs-toggle="modal" data-bs-target="#modalVerificarUtilizador<?php echo (int) $utilizador['id']; ?>" title="Verificar campos">
+                                                            <i class="fa fa-eye"></i>
+                                                        </button>
                                                         <button type="button" class="btn btn-link btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#modalEditarUtilizador<?php echo (int) $utilizador['id']; ?>" title="Editar">
                                                             <i class="fa fa-edit"></i>
                                                         </button>
@@ -341,6 +345,8 @@ $alertMessage = $_GET['message'] ?? '';
     </div>
 
     <?php foreach ($utilizadores as $utilizador): ?>
+        <?php lv_render_verification_modal('modalVerificarUtilizador' . (int) $utilizador['id'], 'Verificar utilizador - ' . ($utilizador['nome'] ?? ''), $utilizador, [], ['password_hash']); ?>
+
         <div class="modal fade" id="modalEditarUtilizador<?php echo (int) $utilizador['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
                 <form method="post" class="modal-content needs-validation" novalidate>

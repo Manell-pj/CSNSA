@@ -58,7 +58,7 @@ CREATE TABLE `departamentos` (
 CREATE TABLE `utilizadores` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `departamento_id` INT UNSIGNED DEFAULT NULL,
-  `numero_mecanografico` INT UNSIGNED DEFAULT NULL,
+  `numero_mecanografico` VARCHAR(4) DEFAULT NULL,
   `nome` VARCHAR(160) NOT NULL,
   `email` VARCHAR(160) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE `utilizadores` (
   `foto` VARCHAR(255) DEFAULT NULL,
   `pin_ponto` VARCHAR(20) DEFAULT NULL,
   `codigo_cartao` VARCHAR(80) DEFAULT NULL,
-  `codigo_biometrico` VARCHAR(80) DEFAULT NULL,
+  `codigo_biometrico` VARCHAR(9) DEFAULT NULL,
   `ultimo_login_at` DATETIME DEFAULT NULL,
   `estado` ENUM('ativo','suspenso','inativo') NOT NULL DEFAULT 'ativo',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -193,6 +193,22 @@ CREATE TABLE `dispositivos` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_dispositivos_numero_serie` (`numero_serie`),
   KEY `idx_dispositivos_estado` (`estado`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `biometric_commands` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `operation` ENUM('upsert_user','delete_user') NOT NULL,
+  `payload` JSON NOT NULL,
+  `status` ENUM('pending','processing','completed','failed') NOT NULL DEFAULT 'pending',
+  `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `available_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `claimed_at` DATETIME DEFAULT NULL,
+  `completed_at` DATETIME DEFAULT NULL,
+  `last_error` VARCHAR(500) DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_biometric_commands_queue` (`status`, `available_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -571,7 +587,7 @@ CREATE TABLE IF NOT EXISTS `funcionarios` (
   `utilizador_id` INT UNSIGNED DEFAULT NULL,
   `setor_id` INT UNSIGNED DEFAULT NULL,
   `equipa_id` INT UNSIGNED DEFAULT NULL,
-  `numero_mecanografico` INT UNSIGNED DEFAULT NULL,
+  `numero_mecanografico` VARCHAR(4) DEFAULT NULL,
   `nome` VARCHAR(160) NOT NULL,
   `email` VARCHAR(160) DEFAULT NULL,
   `telefone` VARCHAR(40) DEFAULT NULL,
@@ -583,7 +599,7 @@ CREATE TABLE IF NOT EXISTS `funcionarios` (
   `carga_horaria_semanal` DECIMAL(5,2) NOT NULL DEFAULT 40.00,
   `pin_ponto` VARCHAR(20) DEFAULT NULL,
   `codigo_cartao` VARCHAR(80) DEFAULT NULL,
-  `codigo_biometrico` VARCHAR(80) DEFAULT NULL,
+  `codigo_biometrico` VARCHAR(9) DEFAULT NULL,
   `estado` ENUM('ativo','suspenso','inativo') NOT NULL DEFAULT 'ativo',
   `observacoes` TEXT DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -621,8 +637,8 @@ WHERE NOT EXISTS (
 CALL add_column_if_missing('utilizadores', 'setor_id', 'INT UNSIGNED DEFAULT NULL AFTER `departamento_id`');
 CALL add_column_if_missing('utilizadores', 'equipa_id', 'INT UNSIGNED DEFAULT NULL AFTER `setor_id`');
 CALL add_column_if_missing('utilizadores', 'funcionario_id', 'INT UNSIGNED DEFAULT NULL AFTER `equipa_id`');
-ALTER TABLE `utilizadores` MODIFY `numero_mecanografico` INT UNSIGNED DEFAULT NULL;
-ALTER TABLE `funcionarios` MODIFY `numero_mecanografico` INT UNSIGNED DEFAULT NULL;
+ALTER TABLE `utilizadores` MODIFY `numero_mecanografico` VARCHAR(4) DEFAULT NULL;
+ALTER TABLE `funcionarios` MODIFY `numero_mecanografico` VARCHAR(4) DEFAULT NULL;
 CALL add_index_if_missing('utilizadores', 'idx_utilizadores_setor', 'INDEX `idx_utilizadores_setor` (`setor_id`)');
 CALL add_index_if_missing('utilizadores', 'idx_utilizadores_equipa', 'INDEX `idx_utilizadores_equipa` (`equipa_id`)');
 CALL add_index_if_missing('utilizadores', 'idx_utilizadores_funcionario', 'INDEX `idx_utilizadores_funcionario` (`funcionario_id`)');
@@ -1446,7 +1462,7 @@ CREATE TABLE IF NOT EXISTS `funcionarios` (
   `equipa_id` INT UNSIGNED DEFAULT NULL,
   `codigo_picagem` VARCHAR(80) DEFAULT NULL,
   `entidade` VARCHAR(180) DEFAULT NULL,
-  `numero_mecanografico` INT UNSIGNED DEFAULT NULL,
+  `numero_mecanografico` VARCHAR(4) DEFAULT NULL,
   `data_ficha` DATE DEFAULT NULL,
   `nome` VARCHAR(160) NOT NULL,
   `email` VARCHAR(160) DEFAULT NULL,
@@ -1523,7 +1539,7 @@ CREATE TABLE IF NOT EXISTS `funcionarios` (
   `linguas` TEXT DEFAULT NULL,
   `pin_ponto` VARCHAR(20) DEFAULT NULL,
   `codigo_cartao` VARCHAR(80) DEFAULT NULL,
-  `codigo_biometrico` VARCHAR(80) DEFAULT NULL,
+  `codigo_biometrico` VARCHAR(9) DEFAULT NULL,
   `estado` ENUM('ativo','suspenso','inativo') NOT NULL DEFAULT 'ativo',
   `observacoes` TEXT DEFAULT NULL,
   `seguro` VARCHAR(160) DEFAULT NULL,

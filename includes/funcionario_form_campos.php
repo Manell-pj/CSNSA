@@ -143,7 +143,8 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Número mec *</label>
-                <input type="number" min="1" step="1" name="numero_mecanografico" class="form-control js-numero-mecanografico" value="<?php echo e($funcionarioForm['numero_mecanografico']); ?>" required>
+                <input type="text" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" name="numero_mecanografico" class="form-control js-numero-mecanografico" value="<?php echo e($funcionarioForm['numero_mecanografico']); ?>" required>
+                <div class="invalid-feedback">Indique ate 4 algarismos.</div>
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Data *</label>
@@ -498,7 +499,7 @@ foreach (['estado_civil', 'irs_estado_civil'] as $estadoCivilCampo) {
             <div class="col-md-3 mb-3"><label class="form-label">Estado</label><select name="estado" class="form-select"><option value="ativo" <?php echo $funcionarioForm['estado'] === 'ativo' ? 'selected' : ''; ?>>Ativo</option><option value="suspenso" <?php echo $funcionarioForm['estado'] === 'suspenso' ? 'selected' : ''; ?>>Suspenso</option><option value="inativo" <?php echo $funcionarioForm['estado'] === 'inativo' ? 'selected' : ''; ?>>Inativo</option></select></div>
             <div class="col-md-3 mb-3"><label class="form-label">PIN ponto</label><input type="text" name="pin_ponto" class="form-control js-pin-ponto" value="<?php echo e($funcionarioForm['pin_ponto']); ?>"></div>
             <div class="col-md-3 mb-3"><label class="form-label">Código cartão</label><input type="text" name="codigo_cartao" class="form-control" value="<?php echo e($funcionarioForm['codigo_cartao']); ?>"></div>
-            <div class="col-md-3 mb-3"><label class="form-label">Código biométrico</label><input type="text" name="codigo_biometrico" class="form-control" value="<?php echo e($funcionarioForm['codigo_biometrico']); ?>"></div>
+            <div class="col-md-3 mb-3"><label class="form-label">Código biométrico</label><input type="text" inputmode="numeric" pattern="[0-9]{1,9}" maxlength="9" name="codigo_biometrico" class="form-control" value="<?php echo e($funcionarioForm['codigo_biometrico']); ?>"><div class="invalid-feedback">Indique ate 9 algarismos.</div></div>
             <div class="col-md-4 mb-3"><label class="form-label">Data-base diuturnidade</label><input type="date" name="diuturnidade_data_base" class="form-control" value="<?php echo e($funcionarioForm['diuturnidade_data_base']); ?>"></div>
             <div class="col-md-4 mb-3"><label class="form-label">Anos por ciclo</label><input type="number" min="1" max="80" name="diuturnidade_ciclo_anos" class="form-control" value="<?php echo e($funcionarioForm['diuturnidade_ciclo_anos']); ?>"></div>
             <div class="col-md-4 mb-3 d-flex align-items-end">

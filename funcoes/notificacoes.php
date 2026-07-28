@@ -303,6 +303,22 @@ function nt_mark_read($conn, $notificacaoId, $utilizadorId, $read)
     mysqli_stmt_close($stmt);
 }
 
+function nt_delete_notification($conn, $notificacaoId)
+{
+    $notificacaoId = (int) $notificacaoId;
+    if ($notificacaoId <= 0 || !nt_schema_ready($conn)) {
+        return false;
+    }
+
+    $stmt = mysqli_prepare($conn, "UPDATE notificacoes SET estado = 'ocultada' WHERE id = ? AND estado <> 'ocultada'");
+    mysqli_stmt_bind_param($stmt, 'i', $notificacaoId);
+    mysqli_stmt_execute($stmt);
+    $updated = mysqli_stmt_affected_rows($stmt) > 0;
+    mysqli_stmt_close($stmt);
+
+    return $updated;
+}
+
 function nt_confirm_diuturnidade($conn, $notificacaoId, $utilizadorId, $observacoes = null)
 {
     $stmt = mysqli_prepare($conn, "SELECT n.*, f.diuturnidade_data_base, f.diuturnidade_ciclo_anos

@@ -17,7 +17,7 @@ $notificacoesDashboard = [];
 $podeVerIdades = false;
 if ($notificacoesReady && ac_can($conn, (int) $utilizadorSessao['id'], 'notificacoes.ver')) {
     nt_generate_notifications($conn);
-    $notificacoesDashboard = nt_list_notifications($conn, (int) $utilizadorSessao['id'], 6, false, false);
+    $notificacoesDashboard = nt_list_notifications($conn, (int) $utilizadorSessao['id'], 3, false, false);
     $podeVerIdades = ac_can_any($conn, (int) $utilizadorSessao['id'], ['funcionarios.dados_sensiveis', 'funcionarios.ver_idade']);
 }
 
@@ -122,43 +122,43 @@ if ($notificacoesReady && ac_can($conn, (int) $utilizadorSessao['id'], 'notifica
                     </div>
 
                     <?php if ($notificacoesReady): ?>
-                        <div class="card">
-                            <div class="card-header">
+                        <div class="card dashboard-alertas-compactos">
+                            <div class="card-header py-2">
                                 <div class="d-flex align-items-center">
-                                    <h4 class="card-title">Aniversários e diuturnidades</h4>
-                                    <a class="btn btn-outline-primary btn-sm ms-auto" href="notificacoes.php">
+                                    <h6 class="card-title mb-0">Aniversários e diuturnidades</h6>
+                                    <a class="btn btn-outline-primary btn-sm ms-auto py-1 px-2" href="notificacoes.php">
                                         Ver todas
                                     </a>
                                 </div>
                             </div>
-                            <div class="card-body">
+                            <div class="card-body py-2">
                                 <?php if (empty($notificacoesDashboard)): ?>
-                                    <p class="text-muted mb-0">Sem notificações ativas para os próximos períodos.</p>
+                                    <p class="text-muted small mb-0">Sem notificações ativas para os próximos períodos.</p>
                                 <?php else: ?>
-                                    <div class="row">
+                                    <div class="row g-2">
                                         <?php foreach ($notificacoesDashboard as $item): ?>
                                             <?php
                                             $badge = $item['tipo'] === 'aniversario' ? 'primary' : 'warning';
                                             $icon = $item['tipo'] === 'aniversario' ? 'fa-birthday-cake' : 'fa-award';
                                             $age = $item['tipo'] === 'aniversario' && $podeVerIdades ? dashboard_idade_evento($item['data_nascimento'], $item['data_evento']) : null;
                                             ?>
-                                            <div class="col-md-6 col-lg-4 mb-3">
-                                                <div class="border rounded p-3 h-100">
-                                                    <div class="d-flex align-items-start">
-                                                        <span class="avatar-title rounded-circle bg-<?php echo e($badge); ?> me-3">
+                                            <div class="col-md-6 col-lg-4">
+                                                <div class="border rounded px-2 py-2 h-100">
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="avatar-title rounded-circle bg-<?php echo e($badge); ?> me-2 dashboard-alerta-icon">
                                                             <i class="fas <?php echo e($icon); ?>"></i>
                                                         </span>
                                                         <div>
-                                                            <div class="fw-bold"><?php echo e($item['funcionario_nome']); ?></div>
+                                                            <div class="fw-bold small text-truncate"><?php echo e($item['funcionario_nome']); ?></div>
                                                             <div class="small text-muted">
                                                                 <?php echo e(date('d/m/Y', strtotime($item['data_evento']))); ?>
                                                                 <?php if ($age !== null): ?>
                                                                     &middot; <?php echo (int) $age; ?> anos
                                                                 <?php endif; ?>
                                                             </div>
-                                                            <div class="small mt-1"><?php echo e($item['mensagem']); ?></div>
+                                                            <div class="small mt-1 text-truncate"><?php echo e($item['mensagem']); ?></div>
                                                             <?php if ($item['lida_at'] === null): ?>
-                                                                <span class="badge badge-primary mt-2">Não lida</span>
+                                                                <span class="badge badge-primary mt-1">Nova</span>
                                                             <?php endif; ?>
                                                         </div>
                                                     </div>
@@ -219,6 +219,19 @@ if ($notificacoesReady && ac_can($conn, (int) $utilizadorSessao['id'], 'notifica
             <?php include 'includes/footer.php'; ?>
         </div>
     </div>
+
+    <style>
+        .dashboard-alertas-compactos .card-title {
+            font-size: 14px;
+        }
+
+        .dashboard-alertas-compactos .dashboard-alerta-icon {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            font-size: 12px;
+        }
+    </style>
 
     <?php include 'includes/scripts.php'; ?>
     <script>

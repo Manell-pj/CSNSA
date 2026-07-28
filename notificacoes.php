@@ -51,6 +51,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         notificacoes_redirect('success', 'Notificação marcada como não lida.');
     }
 
+    if ($acao === 'apagar' && $notificacaoId > 0) {
+        ac_require_permission($conn, $utilizadorSessao, 'notificacoes.gerir');
+
+        $ok = nt_delete_notification($conn, $notificacaoId);
+        notificacoes_redirect($ok ? 'success' : 'danger', $ok ? 'Notificacao apagada.' : 'Nao foi possivel apagar a notificacao.');
+    }
+
     if ($acao === 'confirmar_diuturnidade' && $notificacaoId > 0) {
         ac_require_permission($conn, $utilizadorSessao, 'notificacoes.gerir');
 
@@ -201,6 +208,17 @@ if ($schemaReady && $canView) {
                                                             <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#confirmarDiuturnidade<?php echo (int) $item['id']; ?>">
                                                                 Confirmar atribuição
                                                             </button>
+                                                        <?php endif; ?>
+
+                                                        <?php if ($canManage): ?>
+                                                            <form method="post" onsubmit="return confirm('Tem a certeza que pretende apagar esta notificacao?');">
+                                                                <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
+                                                                <input type="hidden" name="notificacao_id" value="<?php echo (int) $item['id']; ?>">
+                                                                <input type="hidden" name="acao" value="apagar">
+                                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                                    Apagar
+                                                                </button>
+                                                            </form>
                                                         <?php endif; ?>
                                                     </div>
                                                 </div>

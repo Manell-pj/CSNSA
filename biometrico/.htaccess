@@ -1,0 +1,4 @@
+<Files "biometric_secret.php">
+    Require all denied
+</Files>
+
