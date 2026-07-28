@@ -99,7 +99,8 @@ $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
 $headExtraStyle = '
     .escala-print-area,
-    .escala-print-logo {
+    .escala-print-logo,
+    .print-footer {
         display: none;
     }
 ';
@@ -150,20 +151,19 @@ $headExtraStyle = '
                         </div>
                     <?php endif; ?>
 
+                    <div class="print-footer">Página <span class="page-number"></span></div>
+
                     <section id="areaImpressaoEscala" class="escala-print-area" aria-label="Impressão da escala mensal">
-                        <header class="escala-print-header">
-                            <div class="escala-print-logo-wrap">
-                                <img src="assets/img/csnsa/logo-nsa.png" alt="Centro Social Nossa Senhora Auxiliadora" class="escala-print-logo">
-                            </div>
-                            <div class="escala-print-title">
-                                <div class="escala-print-instituicao">Centro Social Nossa Senhora Auxiliadora</div>
-                                <div class="escala-print-nome">Escala Mensal</div>
-                                <div class="escala-print-periodo"><?php echo e($mesAnoLabel); ?></div>
-                            </div>
-                            <div class="escala-print-contexto">
-                                <span>Setor: <strong><?php echo e($setorSelecionadoNome); ?></strong></span>
-                                <span>Equipa: <strong><?php echo e($equipaSelecionadaNome); ?></strong></span>
-                                <span><?php echo (int) $diasNoMes; ?> dias</span>
+                        <header class="report-header mb-4 escala-print-header">
+                            <div>
+                                <h3 class="fw-bold mb-1">Centro Social Nossa Senhora Auxiliadora</h3>
+                                <h4 class="mb-1">Escala mensal</h4>
+                                <div class="text-muted">
+                                    Período: <?php echo e($mesAnoLabel); ?> ·
+                                    Setor: <?php echo e($setorSelecionadoNome); ?> ·
+                                    Equipa: <?php echo e($equipaSelecionadaNome); ?> ·
+                                    <?php echo (int) $diasNoMes; ?> dias
+                                </div>
                             </div>
                         </header>
 
@@ -660,6 +660,14 @@ $headExtraStyle = '
             font-weight: 400;
         }
 
+        .report-header {
+            align-items: flex-start;
+            display: flex;
+            gap: 16px;
+            justify-content: space-between;
+        }
+
+        .print-footer,
         .escala-print-logo {
             display: none;
         }
@@ -960,14 +968,9 @@ $headExtraStyle = '
             }
         }
 
-        @page {
-            margin: 6mm;
-            size: A4 landscape;
-        }
-
         @media print {
             @page {
-                margin: 6mm;
+                margin: 12mm;
                 size: A4 landscape;
             }
 
@@ -992,6 +995,7 @@ $headExtraStyle = '
             .main-header,
             .page-header,
             .breadcrumbs,
+            .no-print,
             .escala-screen-area,
             .escala-filtros-card,
             .escala-paper-actions,
@@ -1029,6 +1033,12 @@ $headExtraStyle = '
                 width: 100% !important;
             }
 
+            .card {
+                border: 0 !important;
+                box-shadow: none !important;
+                page-break-inside: avoid;
+            }
+
             #areaImpressaoEscala {
                 background: #fff !important;
                 box-shadow: none !important;
@@ -1045,71 +1055,29 @@ $headExtraStyle = '
             }
 
             .escala-print-header {
-                align-items: center !important;
-                border: 0.3mm solid #333 !important;
-                border-bottom: 0 !important;
-                box-sizing: border-box !important;
-                display: grid !important;
-                grid-template-columns: 18mm 1fr 58mm !important;
-                min-height: 18mm !important;
-                padding: 1.4mm 2mm !important;
-                width: 100% !important;
-            }
-
-            .escala-print-logo-wrap {
-                align-items: center !important;
                 display: flex !important;
-                justify-content: center !important;
+                margin-bottom: 8mm !important;
             }
 
-            .escala-print-logo {
-                display: block !important;
-                height: auto !important;
-                max-height: 14mm !important;
-                max-width: 14mm !important;
-                object-fit: contain !important;
-                width: auto !important;
+            .escala-print-header h3 {
+                font-size: 13pt !important;
             }
 
-            .escala-print-title {
-                line-height: 1.05 !important;
-                text-align: center !important;
-                text-transform: uppercase !important;
+            .escala-print-header h4 {
+                font-size: 11pt !important;
             }
 
-            .escala-print-instituicao {
-                font-size: 10.5pt !important;
-                font-weight: 700 !important;
-            }
-
-            .escala-print-nome {
-                font-size: 9pt !important;
-                font-weight: 700 !important;
-                margin-top: 0.8mm !important;
-            }
-
-            .escala-print-periodo {
+            .escala-print-header .text-muted {
+                color: #666 !important;
                 font-size: 8pt !important;
-                font-weight: 700 !important;
-                margin-top: 0.8mm !important;
-            }
-
-            .escala-print-contexto {
-                align-self: stretch !important;
-                border-left: 0.3mm solid #333 !important;
-                display: flex !important;
-                flex-direction: column !important;
-                font-size: 6.4pt !important;
-                justify-content: center !important;
-                line-height: 1.15 !important;
-                padding-left: 2mm !important;
-                text-align: left !important;
             }
 
             .escala-print-table {
-                border-collapse: collapse !important;
+                border-collapse: separate !important;
                 border-spacing: 0 !important;
-                font-size: 7pt !important;
+                border-left: 0.3mm solid #333 !important;
+                border-top: 0.3mm solid #333 !important;
+                font-size: 6.8pt !important;
                 line-height: 1 !important;
                 margin: 0 !important;
                 table-layout: fixed !important;
@@ -1139,14 +1107,25 @@ $headExtraStyle = '
 
             .escala-print-table th,
             .escala-print-table td {
-                border: 0.3mm solid #333 !important;
+                border: 0 !important;
+                border-bottom: 0.3mm solid #333 !important;
+                border-right: 0.3mm solid #333 !important;
                 box-sizing: border-box !important;
-                height: 5.4mm !important;
+                height: 5.1mm !important;
                 overflow: hidden !important;
                 padding: 0.3mm 0.45mm !important;
                 text-align: center !important;
                 vertical-align: middle !important;
                 white-space: nowrap !important;
+            }
+
+            .escala-print-table tr > th:first-child,
+            .escala-print-table tr > td:first-child {
+                border-left: 0 !important;
+            }
+
+            .escala-print-table thead tr:first-child > th {
+                border-top: 0 !important;
             }
 
             .escala-print-table thead th {
@@ -1226,7 +1205,10 @@ $headExtraStyle = '
             }
 
             .escala-print-legenda-bloco table {
-                border-collapse: collapse !important;
+                border-collapse: separate !important;
+                border-left: 0.3mm solid #333 !important;
+                border-spacing: 0 !important;
+                border-top: 0.3mm solid #333 !important;
                 font-size: 6.2pt !important;
                 table-layout: fixed !important;
                 width: 52mm !important;
@@ -1234,11 +1216,23 @@ $headExtraStyle = '
 
             .escala-print-legenda-bloco th,
             .escala-print-legenda-bloco td {
-                border: 0.25mm solid #333 !important;
+                border: 0 !important;
+                border-bottom: 0.3mm solid #333 !important;
+                border-right: 0.3mm solid #333 !important;
                 height: 4.1mm !important;
                 line-height: 1 !important;
                 padding: 0.35mm 0.8mm !important;
                 white-space: nowrap !important;
+            }
+
+            .escala-print-legenda-bloco tr:first-child > th,
+            .escala-print-legenda-bloco tr:first-child > td {
+                border-top: 0 !important;
+            }
+
+            .escala-print-legenda-bloco tr > th:first-child,
+            .escala-print-legenda-bloco tr > td:first-child {
+                border-left: 0 !important;
             }
 
             .escala-print-legenda-bloco th {
@@ -1251,6 +1245,19 @@ $headExtraStyle = '
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
                 width: 39mm !important;
+            }
+
+            .print-footer {
+                bottom: 0;
+                color: #666;
+                display: block !important;
+                font-size: 10px;
+                position: fixed;
+                right: 0;
+            }
+
+            .page-number:after {
+                content: counter(page);
             }
         }
 
