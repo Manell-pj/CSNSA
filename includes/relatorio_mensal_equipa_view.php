@@ -88,8 +88,10 @@
     </div>
 </div>
 
-<?php foreach ($relatorio['funcionarios'] as $funcionario): ?>
-    <div class="page-break">
-        <?php include __DIR__ . '/relatorio_mensal_individual_view.php'; ?>
-    </div>
-<?php endforeach; ?>
+<?php if (empty($isPrint)): ?>
+    <?php foreach ($relatorio['funcionarios'] as $funcionario): ?>
+        <div class="page-break">
+            <?php include __DIR__ . '/relatorio_mensal_individual_view.php'; ?>
+        </div>
+    <?php endforeach; ?>
+<?php endif; ?>
