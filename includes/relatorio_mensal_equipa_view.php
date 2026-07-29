@@ -14,8 +14,6 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                         <th>Carga semanal</th>
                         <th>Dias previstos</th>
                         <th>Dias trabalhados</th>
-                        <th>Total horas previstas</th>
-                        <th>Total horas trabalhadas</th>
                         <th>Horas previstas</th>
                         <th>Horas trabalhadas</th>
                         <th>Horas extra</th>
@@ -42,8 +40,6 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                             <td><?php echo e(rm_formatar_minutos($funcionario['carga_semanal_minutos'])); ?></td>
                             <td><?php echo (int) $t['dias_previstos']; ?></td>
                             <td><?php echo (int) $t['dias_trabalhados']; ?></td>
-                            <td><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></td>
-                            <td><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['minutos_extra'])); ?></td>
@@ -73,8 +69,6 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                         <th><?php echo (int) $t['dias_trabalhados']; ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></th>
-                        <th><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></th>
-                        <th><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_extra'])); ?></th>
                         <?php foreach ($relatorio['regras_extra'] as $regra): ?>
                             <?php $percentagem = (string) (int) $regra['porcentagem']; ?>
@@ -87,6 +81,52 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                         <th><?php echo e(rm_formatar_minutos($t['banco_horas_minutos'])); ?></th>
                         <th><?php echo (int) $t['correcoes_manuais']; ?></th>
                         <th><?php echo (int) $t['incidencias_pendentes']; ?></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <?php
+    }
+}
+
+if (!function_exists('rm_render_totais_funcionarios_print_table')) {
+    function rm_render_totais_funcionarios_print_table(array $funcionariosTabela, array $totaisTabela, string $totalLabel = 'Total da equipa')
+    {
+        ?>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover report-table report-print-summary-table">
+                <thead>
+                    <tr>
+                        <th>Funcionário</th>
+                        <th>Função</th>
+                        <th>Dias prev.</th>
+                        <th>Dias trab.</th>
+                        <th>Horas previstas</th>
+                        <th>Horas trabalhadas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($funcionariosTabela as $funcionario): ?>
+                        <?php $t = $funcionario['totais']; ?>
+                        <tr>
+                            <td><?php echo e($funcionario['nome']); ?></td>
+                            <td><?php echo e($funcionario['funcao']); ?></td>
+                            <td><?php echo (int) $t['dias_previstos']; ?></td>
+                            <td><?php echo (int) $t['dias_trabalhados']; ?></td>
+                            <td><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></td>
+                            <td><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                    <?php $t = $totaisTabela; ?>
+                    <tr>
+                        <th><?php echo e($totalLabel); ?></th>
+                        <th></th>
+                        <th><?php echo (int) $t['dias_previstos']; ?></th>
+                        <th><?php echo (int) $t['dias_trabalhados']; ?></th>
+                        <th><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></th>
+                        <th><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></th>
                     </tr>
                 </tfoot>
             </table>
@@ -122,7 +162,7 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                 <h4 class="card-title mb-0">Totais por funcionário | Equipa <?php echo e($equipaNome); ?></h4>
             </div>
             <div class="card-body">
-                <?php rm_render_totais_funcionarios_table($relatorio, $funcionariosEquipa, $totaisPorEquipa[$equipaNome], 'Total da equipa'); ?>
+                <?php rm_render_totais_funcionarios_print_table($funcionariosEquipa, $totaisPorEquipa[$equipaNome], 'Total da equipa'); ?>
             </div>
         </div>
     <?php endforeach; ?>

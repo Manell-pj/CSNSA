@@ -268,6 +268,28 @@ $totais = $relatorio['totais_equipa'];
                 font-size: 10px;
             }
 
+            .report-print-summary-table {
+                font-size: 7.5px !important;
+                table-layout: auto !important;
+                width: 100% !important;
+            }
+
+            .report-print-summary-table th,
+            .report-print-summary-table td {
+                line-height: 1.15 !important;
+                overflow-wrap: normal !important;
+                padding: 2px 3px !important;
+                word-break: normal !important;
+            }
+
+            .report-print-summary-table th {
+                white-space: nowrap !important;
+            }
+
+            .report-print-summary-table td {
+                white-space: normal !important;
+            }
+
             .report-print-logo {
                 display: block !important;
                 flex: 0 0 auto !important;
