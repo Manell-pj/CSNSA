@@ -726,7 +726,17 @@ $alertMessage = $_GET['message'] ?? '';
     }
     ?>
     <?php foreach ($funcionarios as $funcionario): ?>
-        <?php lv_render_verification_modal('modalVerificarFuncionario' . (int) $funcionario['id'], 'Verificar funcionário - ' . ($funcionario['nome'] ?? ''), $funcionario, [], $camposExcluidosVerificacaoFuncionario); ?>
+        <?php
+        $funcionarioVerificacao = $funcionario;
+        $funcionarioVerificacao['diuturnidade_resumo'] = funcionario_diuturnidade_resumo($conn, $funcionario);
+        lv_render_verification_modal(
+            'modalVerificarFuncionario' . (int) $funcionario['id'],
+            'Verificar funcionário - ' . ($funcionario['nome'] ?? ''),
+            $funcionarioVerificacao,
+            ['diuturnidade_resumo' => 'Diuturnidade'],
+            $camposExcluidosVerificacaoFuncionario
+        );
+        ?>
 
         <div class="modal fade" id="modalEditarFuncionario<?php echo (int) $funcionario['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-xl" role="document">

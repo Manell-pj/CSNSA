@@ -45,6 +45,36 @@ function hora_para_minutos($hora)
     return ((int) $h) * 60 + ((int) $m);
 }
 
+function minutos_previstos_periodo($inicio, $fim)
+{
+    $inicioMinutos = hora_para_minutos($inicio);
+    $fimMinutos = hora_para_minutos($fim);
+
+    if ($inicioMinutos === null || $fimMinutos === null || $inicioMinutos === $fimMinutos) {
+        return 0;
+    }
+
+    return $fimMinutos > $inicioMinutos
+        ? $fimMinutos - $inicioMinutos
+        : ($fimMinutos + 1440) - $inicioMinutos;
+}
+
+function horas_previstas_periodos(array $periodos)
+{
+    $minutos = 0;
+    foreach ($periodos as $periodo) {
+        $minutos += minutos_previstos_periodo($periodo['inicio'] ?? '', $periodo['fim'] ?? '');
+    }
+
+    return round($minutos / 60, 2);
+}
+
+function formatar_minutos_hhmm($minutos)
+{
+    $minutos = max(0, (int) $minutos);
+    return sprintf('%02d:%02d', intdiv($minutos, 60), $minutos % 60);
+}
+
 function periodos_para_intervalos(array $periodos)
 {
     $intervalos = [];
@@ -176,9 +206,7 @@ function salvar_periodos_turno($conn, $turnoId, array $periodos, int $tolerancia
         $inicioMinutos = hora_para_minutos($periodo['inicio']);
         $fimMinutos = hora_para_minutos($periodo['fim']);
         $cruzaDia = $fimMinutos <= $inicioMinutos ? 1 : 0;
-        $minutosPrevistos = $fimMinutos > $inicioMinutos
-            ? $fimMinutos - $inicioMinutos
-            : ($fimMinutos + 1440) - $inicioMinutos;
+        $minutosPrevistos = minutos_previstos_periodo($periodo['inicio'], $periodo['fim']);
 
         mysqli_stmt_bind_param(
             $stmt,

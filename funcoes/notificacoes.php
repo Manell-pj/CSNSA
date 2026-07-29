@@ -38,7 +38,9 @@ function nt_schema_ready($conn)
 
     return nt_table_exists($conn, 'funcionarios')
         && nt_column_exists($conn, 'funcionarios', 'data_nascimento')
-        && nt_column_exists($conn, 'funcionarios', 'diuturnidade_data_base');
+        && nt_column_exists($conn, 'funcionarios', 'data_admissao')
+        && nt_column_exists($conn, 'funcionarios', 'diuturnidade_ciclo_anos')
+        && nt_column_exists($conn, 'funcionarios', 'diuturnidade_ativa');
 }
 
 function nt_has_permission($conn, $utilizadorId, $codigo)
@@ -169,10 +171,10 @@ function nt_generate_notifications($conn)
     $defaultCycleYears = nt_config_int($conn, 'diuturnidades_ciclo_anos', 5);
     $today = new DateTimeImmutable('today');
 
-    $stmt = mysqli_prepare($conn, "SELECT id, nome, estado, data_nascimento, diuturnidade_data_base, diuturnidade_ciclo_anos, diuturnidade_ativa
+    $stmt = mysqli_prepare($conn, "SELECT id, nome, estado, data_nascimento, data_admissao, diuturnidade_ciclo_anos, diuturnidade_ativa
         FROM funcionarios
         WHERE data_nascimento IS NOT NULL
-           OR (diuturnidade_data_base IS NOT NULL AND diuturnidade_ativa = 1)");
+           OR (data_admissao IS NOT NULL AND diuturnidade_ativa = 1)");
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
 
@@ -194,13 +196,13 @@ function nt_generate_notifications($conn)
             }
         }
 
-        if (!empty($funcionario['diuturnidade_data_base']) && (int) $funcionario['diuturnidade_ativa'] === 1) {
+        if (!empty($funcionario['data_admissao']) && (int) $funcionario['diuturnidade_ativa'] === 1) {
             $cycleYears = (int) ($funcionario['diuturnidade_ciclo_anos'] ?: $defaultCycleYears);
             if ($cycleYears <= 0) {
                 continue;
             }
 
-            $dataBase = new DateTimeImmutable($funcionario['diuturnidade_data_base']);
+            $dataBase = new DateTimeImmutable($funcionario['data_admissao']);
             for ($cycle = 1; $cycle <= 80; $cycle++) {
                 $due = $dataBase->modify('+' . ($cycle * $cycleYears) . ' years');
                 $diff = (int) $today->diff($due)->format('%r%a');
@@ -273,7 +275,7 @@ function nt_list_notifications($conn, $utilizadorId, $limit = 50, $showInativos 
     }
 
     $sql = "SELECT n.*, nd.lida_at, f.nome AS funcionario_nome, f.estado AS funcionario_estado, f.data_nascimento,
-                   f.diuturnidade_data_base, f.diuturnidade_ciclo_anos
+                   f.data_admissao, f.diuturnidade_ciclo_anos
             FROM notificacao_destinatarios nd
             INNER JOIN notificacoes n ON n.id = nd.notificacao_id
             INNER JOIN funcionarios f ON f.id = n.funcionario_id
@@ -321,7 +323,7 @@ function nt_delete_notification($conn, $notificacaoId)
 
 function nt_confirm_diuturnidade($conn, $notificacaoId, $utilizadorId, $observacoes = null)
 {
-    $stmt = mysqli_prepare($conn, "SELECT n.*, f.diuturnidade_data_base, f.diuturnidade_ciclo_anos
+    $stmt = mysqli_prepare($conn, "SELECT n.*, f.data_admissao, f.diuturnidade_ciclo_anos
         FROM notificacoes n
         INNER JOIN funcionarios f ON f.id = n.funcionario_id
         WHERE n.id = ? AND n.tipo = 'diuturnidade' LIMIT 1");
@@ -336,14 +338,14 @@ function nt_confirm_diuturnidade($conn, $notificacaoId, $utilizadorId, $observac
     }
 
     $cycleYears = (int) ($notificacao['diuturnidade_ciclo_anos'] ?: nt_config_int($conn, 'diuturnidades_ciclo_anos', 5));
-    if ($cycleYears <= 0 || empty($notificacao['diuturnidade_data_base']) || empty($notificacao['ciclo_numero'])) {
+    if ($cycleYears <= 0 || empty($notificacao['data_admissao']) || empty($notificacao['ciclo_numero'])) {
         return false;
     }
 
     mysqli_begin_transaction($conn);
     try {
         $funcionarioId = (int) $notificacao['funcionario_id'];
-        $dataBase = $notificacao['diuturnidade_data_base'];
+        $dataBase = $notificacao['data_admissao'];
         $cicloNumero = (int) $notificacao['ciclo_numero'];
         $dataVencimento = $notificacao['data_evento'];
         $stmt = mysqli_prepare($conn, "INSERT INTO diuturnidades_atribuicoes

@@ -44,3 +44,16 @@ function equipa_setor_padrao($conn)
 
     return isset($row['id']) ? (int) $row['id'] : null;
 }
+
+function equipa_remover_membros($conn, $equipaId)
+{
+    $equipaId = (int) $equipaId;
+    if ($equipaId <= 0 || !fe_column_exists($conn, 'funcionarios', 'equipa_id')) {
+        return;
+    }
+
+    $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET equipa_id = NULL WHERE equipa_id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $equipaId);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+}

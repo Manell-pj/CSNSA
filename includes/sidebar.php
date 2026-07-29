@@ -22,7 +22,17 @@
     </div>
     <div class="sidebar-wrapper scrollbar scrollbar-inner">
         <div class="sidebar-content">
-            <?php $paginaAtual = basename($_SERVER['PHP_SELF']); ?>
+            <?php
+            $paginaAtual = basename($_SERVER['PHP_SELF']);
+            $notificacoesSidebarTotal = 0;
+            if (isset($conn, $utilizadorSessao)) {
+                require_once __DIR__ . '/notificacoes.php';
+                if (nt_schema_ready($conn) && ac_can($conn, (int) $utilizadorSessao['id'], 'notificacoes.ver')) {
+                    nt_generate_notifications($conn);
+                    $notificacoesSidebarTotal = nt_count_unread($conn, (int) $utilizadorSessao['id']);
+                }
+            }
+            ?>
             <ul class="nav nav-secondary">
                 <li class="nav-item <?php echo in_array($paginaAtual, ['principal.php', 'dashboard.php', 'index.php'], true) ? 'active' : ''; ?>">
                     <a href="principal.php">
@@ -58,6 +68,9 @@
                     <a href="notificacoes.php">
                         <i class="fas fa-bell"></i>
                         <p>Notificações</p>
+                        <?php if ($notificacoesSidebarTotal > 0): ?>
+                            <span class="badge sidebar-notification-badge ms-auto"><?php echo (int) $notificacoesSidebarTotal; ?></span>
+                        <?php endif; ?>
                     </a>
                 </li>
                 <li class="nav-item <?php echo $paginaAtual === 'turnos.php' ? 'active' : ''; ?>">
@@ -104,6 +117,13 @@
         </div>
     </div>
 </div>
+
+<style>
+    .sidebar .sidebar-notification-badge {
+        background-color: #31CE36;
+        color: #ffffff;
+    }
+</style>
 
 <!-- End Sidebar -->
 

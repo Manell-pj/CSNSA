@@ -6,6 +6,7 @@ $horaSaida = isset($turno['hora_saida']) ? substr((string) $turno['hora_saida'],
 $toleranciaAtraso = isset($turno['tolerancia_entrada_min']) ? (int) $turno['tolerancia_entrada_min'] : 0;
 $toleranciaSaida = isset($turno['tolerancia_saida_min']) ? (int) $turno['tolerancia_saida_min'] : 0;
 $horasPrevistas = isset($turno['horas_previstas']) ? $turno['horas_previstas'] : 8.00;
+$minutosPrevistos = ($horaEntrada !== '' && $horaSaida !== '') ? minutos_previstos_periodo($horaEntrada, $horaSaida) : 0;
 $ativo = !isset($turno) || (int) ($turno['ativo'] ?? 1) === 1;
 $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) spl_object_id((object) $turno)), 0, 6);
 ?>
@@ -39,7 +40,10 @@ $turnoFormId = 'turno' . (int) ($turno['id'] ?? 0) . '_' . substr(md5((string) s
     </div>
     <div class="col-md-4 mb-3">
         <label class="form-label">Horas previstas</label>
-        <input type="number" step="0.25" name="horas_previstas" class="form-control js-turno-horas-previstas" min="0" value="<?php echo e($horasPrevistas); ?>">
+        <input type="number" step="0.01" name="horas_previstas" class="form-control js-turno-horas-previstas" min="0" value="<?php echo e(number_format((float) $horasPrevistas, 2, '.', '')); ?>" readonly>
+        <small class="form-text text-muted js-turno-duracao-real">
+            Duração real: <?php echo e($minutosPrevistos > 0 ? formatar_minutos_hhmm($minutosPrevistos) : '--:--'); ?>
+        </small>
     </div>
     <div class="col-md-4 mb-3">
         <div class="form-check mt-2">

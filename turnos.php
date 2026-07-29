@@ -35,7 +35,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $horaSaida = nullable_time($_POST['hora_saida'] ?? '');
         $toleranciaAtraso = (int) ($_POST['tolerancia_entrada_min'] ?? 0);
         $toleranciaSaida = (int) ($_POST['tolerancia_saida_min'] ?? 0);
-        $horasPrevistas = (float) ($_POST['horas_previstas'] ?? 8);
         $turnoNoturno = 0;
         $ativo = isset($_POST['ativo']) ? 1 : 0;
 
@@ -45,8 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($horaEntrada === null || $horaSaida === null) {
             redirect_with_message('danger', 'Preencha a hora de entrada e a hora de saida.');
         }
+        if ($horaEntrada === $horaSaida) {
+            redirect_with_message('danger', 'A hora de entrada e a hora de saida nao podem ser iguais.');
+        }
 
         $periodos = [['inicio' => $horaEntrada, 'fim' => $horaSaida]];
+        $horasPrevistas = horas_previstas_periodos($periodos);
 
         try {
             $stmt = mysqli_prepare($conn, 'INSERT INTO turnos (nome, codigo, hora_entrada, hora_saida, inicio_pausa, fim_pausa, tolerancia_entrada_min, tolerancia_saida_min, horas_previstas, turno_noturno, ativo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -76,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $horaSaida = nullable_time($_POST['hora_saida'] ?? '');
         $toleranciaAtraso = (int) ($_POST['tolerancia_entrada_min'] ?? 0);
         $toleranciaSaida = (int) ($_POST['tolerancia_saida_min'] ?? 0);
-        $horasPrevistas = (float) ($_POST['horas_previstas'] ?? 8);
         $turnoNoturno = 0;
         $ativo = isset($_POST['ativo']) ? 1 : 0;
 
@@ -86,8 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($horaEntrada === null || $horaSaida === null) {
             redirect_with_message('danger', 'Preencha a hora de entrada e a hora de saida.');
         }
+        if ($horaEntrada === $horaSaida) {
+            redirect_with_message('danger', 'A hora de entrada e a hora de saida nao podem ser iguais.');
+        }
 
         $periodos = [['inicio' => $horaEntrada, 'fim' => $horaSaida]];
+        $horasPrevistas = horas_previstas_periodos($periodos);
 
         try {
             $stmt = mysqli_prepare($conn, 'UPDATE turnos SET nome = ?, codigo = ?, hora_entrada = ?, hora_saida = ?, inicio_pausa = ?, fim_pausa = ?, tolerancia_entrada_min = ?, tolerancia_saida_min = ?, horas_previstas = ?, turno_noturno = ?, ativo = ? WHERE id = ?');
@@ -347,8 +353,10 @@ $alertMessage = $_GET['message'] ?? '';
                 var entrada = timeToMinutes($form.find('.js-turno-hora-entrada').val());
                 var saida = timeToMinutes($form.find('.js-turno-hora-saida').val());
                 var $horas = $form.find('.js-turno-horas-previstas');
+                var $duracao = $form.find('.js-turno-duracao-real');
 
                 if (entrada === null || saida === null) {
+                    $duracao.text('Duração real: --:--');
                     return;
                 }
 
@@ -358,7 +366,12 @@ $alertMessage = $_GET['message'] ?? '';
                 }
 
                 $horas.val((minutos / 60).toFixed(2));
+                $duracao.text('Duração real: ' + String(Math.floor(minutos / 60)).padStart(2, '0') + ':' + String(minutos % 60).padStart(2, '0'));
             }
+
+            $('.needs-validation').each(function () {
+                updateHorasPrevistas($(this));
+            });
 
             $('.js-turno-hora-entrada, .js-turno-hora-saida').on('change input', function () {
                 updateHorasPrevistas($(this).closest('form'));

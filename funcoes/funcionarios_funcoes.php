@@ -259,6 +259,47 @@ function funcionario_estado_badge($estado)
     return 'secondary';
 }
 
+function funcionario_diuturnidade_resumo($conn, array $funcionario)
+{
+    if ((int) ($funcionario['diuturnidade_ativa'] ?? 1) !== 1) {
+        return 'Inativa';
+    }
+
+    if (empty($funcionario['data_admissao'])) {
+        return 'Sem data de admissão';
+    }
+
+    $cicloAnos = (int) ($funcionario['diuturnidade_ciclo_anos'] ?? 0);
+    if ($cicloAnos <= 0) {
+        $cicloAnos = 5;
+        if (fe_table_exists($conn, 'notificacoes_config')) {
+            $stmt = mysqli_prepare($conn, "SELECT valor FROM notificacoes_config WHERE chave = 'diuturnidades_ciclo_anos' LIMIT 1");
+            mysqli_stmt_execute($stmt);
+            $config = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+            mysqli_stmt_close($stmt);
+            $cicloAnos = max(1, (int) ($config['valor'] ?? $cicloAnos));
+        }
+    }
+
+    $admissao = new DateTimeImmutable($funcionario['data_admissao']);
+    $hoje = new DateTimeImmutable('today');
+
+    for ($ciclo = 1; $ciclo <= 80; $ciclo++) {
+        $dataVencimento = $admissao->modify('+' . ($ciclo * $cicloAnos) . ' years');
+        if ($dataVencimento >= $hoje) {
+            $anosCasa = $ciclo * $cicloAnos;
+            return sprintf(
+                'Próxima em %s (%d anos de casa, ciclo %d)',
+                $dataVencimento->format('d/m/Y'),
+                $anosCasa,
+                $ciclo
+            );
+        }
+    }
+
+    return 'Sem próxima diuturnidade prevista';
+}
+
 function funcionario_tem_dependencias($conn, $funcionarioId)
 {
     $checks = [

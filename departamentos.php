@@ -73,13 +73,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            mysqli_begin_transaction($conn);
+
             $stmt = mysqli_prepare($conn, 'UPDATE equipas SET nome = ?, codigo = ?, descricao = ?, ativo = ? WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'sssii', $nome, $codigo, $descricao, $ativo, $id);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
+            if ($ativo === 0) {
+                equipa_remover_membros($conn, $id);
+            }
+
+            mysqli_commit($conn);
             redirect_with_message('success', 'Equipa atualizada com sucesso.');
         } catch (mysqli_sql_exception $e) {
+            mysqli_rollback($conn);
             redirect_with_message('danger', 'Não foi possível atualizar a equipa. Verifique se o código já existe.');
         }
     }
@@ -91,13 +99,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            mysqli_begin_transaction($conn);
+
             $stmt = mysqli_prepare($conn, 'UPDATE equipas SET ativo = 0 WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'i', $id);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
+            equipa_remover_membros($conn, $id);
+
+            mysqli_commit($conn);
             redirect_with_message('success', 'Equipa desativada com sucesso.');
         } catch (mysqli_sql_exception $e) {
+            mysqli_rollback($conn);
             redirect_with_message('danger', 'Não foi possível desativar a equipa.');
         }
     }
