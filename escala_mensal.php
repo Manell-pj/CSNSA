@@ -163,6 +163,7 @@ $headExtraStyle = '
 
                     <section id="areaImpressaoEscala" class="escala-print-area" aria-label="Impressão da escala mensal">
                         <header class="report-header mb-4 escala-print-header">
+                            <img src="assets/img/csnsa/logo-nsa.png" alt="Centro Social Nossa Senhora Auxiliadora" class="escala-print-header-logo">
                             <div>
                                 <h3 class="fw-bold mb-1">Centro Social Nossa Senhora Auxiliadora</h3>
                                 <h4 class="mb-1">Escala mensal</h4>
@@ -187,17 +188,21 @@ $headExtraStyle = '
                                 <thead>
                                     <tr class="print-weekdays-row">
                                         <th class="print-funcionario-header" rowspan="2">Funcionário</th>
-                                        <th class="print-categoria-header" rowspan="2">Categoria</th>
+                                        <th class="print-categoria-header" rowspan="2">Equipa</th>
                                         <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                             <?php
                                             $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
                                             $diaSemana = weekday_short($data);
                                             $classesDiaPrint = [];
-                                            if (in_array(date('N', strtotime($data)), [6, 7], true)) {
+                                            $ehFimSemanaPrint = in_array(date('N', strtotime($data)), [6, 7], true);
+                                            if ($ehFimSemanaPrint) {
                                                 $classesDiaPrint[] = 'print-fim-semana';
+                                            } else {
+                                                $classesDiaPrint[] = 'print-dia-util';
                                             }
+                                            $styleDiaPrint = $ehFimSemanaPrint ? 'background: #ffffff !important; background-color: #ffffff !important; border-color: #b8b8b8 !important; color: #9a9a9a !important; font-weight: 400 !important;' : '';
                                             ?>
-                                            <th class="print-dia-header <?php echo e(implode(' ', $classesDiaPrint)); ?>">
+                                            <th class="print-dia-header <?php echo e(implode(' ', $classesDiaPrint)); ?>" style="<?php echo e($styleDiaPrint); ?>">
                                                 <?php echo e(substr($diaSemana, 0, 1)); ?>
                                             </th>
                                         <?php endfor; ?>
@@ -207,11 +212,15 @@ $headExtraStyle = '
                                             <?php
                                             $data = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
                                             $classesDiaPrint = [];
-                                            if (in_array(date('N', strtotime($data)), [6, 7], true)) {
+                                            $ehFimSemanaPrint = in_array(date('N', strtotime($data)), [6, 7], true);
+                                            if ($ehFimSemanaPrint) {
                                                 $classesDiaPrint[] = 'print-fim-semana';
+                                            } else {
+                                                $classesDiaPrint[] = 'print-dia-util';
                                             }
+                                            $styleDiaPrint = $ehFimSemanaPrint ? 'background: #ffffff !important; background-color: #ffffff !important; border-color: #b8b8b8 !important; color: #9a9a9a !important; font-weight: 400 !important;' : '';
                                             ?>
-                                            <th class="print-dia-numero <?php echo e(implode(' ', $classesDiaPrint)); ?>">
+                                            <th class="print-dia-numero <?php echo e(implode(' ', $classesDiaPrint)); ?>" style="<?php echo e($styleDiaPrint); ?>">
                                                 <?php echo (int) $dia; ?>
                                             </th>
                                         <?php endfor; ?>
@@ -221,7 +230,7 @@ $headExtraStyle = '
                                     <?php foreach ($funcionarios as $funcionario): ?>
                                         <tr>
                                             <th class="print-funcionario"><?php echo e($funcionario['nome']); ?></th>
-                                            <td class="print-categoria"><?php echo e($funcionario['funcao'] ?: '-'); ?></td>
+                                            <td class="print-categoria"><?php echo e($funcionario['equipa_nome'] ?: '-'); ?></td>
                                             <?php for ($dia = 1; $dia <= $diasNoMes; $dia++): ?>
                                                 <?php
                                                 $registo = $escalaGuardada[(int) $funcionario['id']][$dia] ?? [];
@@ -234,14 +243,18 @@ $headExtraStyle = '
                                                 $codigoDia = $codigoTurno ?: ($tipoDia === 'turno' ? '-' : ($codigosTipoDia[$tipoDia] ?? '-'));
                                                 $classesCelulaPrint = ['print-tipo-' . $tipoDia];
                                                 $dataCelula = sprintf('%04d-%02d-%02d', $ano, $mes, $dia);
-                                                if (in_array(date('N', strtotime($dataCelula)), [6, 7], true)) {
+                                                $ehFimSemanaPrint = in_array(date('N', strtotime($dataCelula)), [6, 7], true);
+                                                if ($ehFimSemanaPrint) {
                                                     $classesCelulaPrint[] = 'print-fim-semana';
+                                                } else {
+                                                    $classesCelulaPrint[] = 'print-dia-util';
                                                 }
                                                 if ($folgaTrabalhada) {
                                                     $classesCelulaPrint[] = 'print-folga-trabalhada';
                                                 }
+                                                $styleCelulaPrint = $ehFimSemanaPrint ? 'background: #ffffff !important; background-color: #ffffff !important; border-color: #b8b8b8 !important; color: #9a9a9a !important; font-weight: 400 !important;' : '';
                                                 ?>
-                                                <td class="print-dia-cell <?php echo e(implode(' ', $classesCelulaPrint)); ?>">
+                                                <td class="print-dia-cell <?php echo e(implode(' ', $classesCelulaPrint)); ?>" style="<?php echo e($styleCelulaPrint); ?>">
                                                     <?php echo e($codigoDia); ?><?php echo $tipoDia === 'substituicao' ? 'S' : ''; ?><?php echo $folgaTrabalhada ? '+' : ''; ?>
                                                 </td>
                                             <?php endfor; ?>
@@ -396,7 +409,7 @@ $headExtraStyle = '
                                                 <?php $grupoAtual = null; ?>
                                                 <?php foreach ($funcionarios as $funcionario): ?>
                                                     <?php
-                                                    $grupoLinha = ($funcionario['setor_nome'] ?? '') ?: (($funcionario['equipa_nome'] ?? '') ?: 'Sem setor/equipa');
+                                                    $grupoLinha = ($funcionario['equipa_nome'] ?? '') ?: 'Sem equipa';
                                                     if ($grupoLinha !== $grupoAtual):
                                                         $grupoAtual = $grupoLinha;
                                                     ?>
@@ -1065,8 +1078,18 @@ $headExtraStyle = '
             }
 
             .escala-print-header {
+                align-items: flex-start !important;
                 display: flex !important;
+                gap: 5mm !important;
                 margin-bottom: 8mm !important;
+            }
+
+            .escala-print-header-logo {
+                display: block !important;
+                flex: 0 0 auto !important;
+                height: 18mm !important;
+                object-fit: contain !important;
+                width: 18mm !important;
             }
 
             .escala-print-header h3 {
@@ -1080,6 +1103,11 @@ $headExtraStyle = '
             .escala-print-header .text-muted {
                 color: #666 !important;
                 font-size: 8pt !important;
+            }
+
+            .escala-print-area a {
+                color: inherit !important;
+                text-decoration: none !important;
             }
 
             .escala-print-table {
@@ -1192,6 +1220,21 @@ $headExtraStyle = '
                 background: #dedede !important;
             }
 
+            .print-dia-header.print-dia-util,
+            .print-dia-numero.print-dia-util {
+                background: #a8a8a8 !important;
+            }
+
+            .print-dia-header.print-fim-semana,
+            .print-dia-numero.print-fim-semana,
+            .print-dia-cell.print-fim-semana {
+                background: #ffffff !important;
+                background-color: #ffffff !important;
+                border-color: #b8b8b8 !important;
+                color: #9a9a9a !important;
+                font-weight: 400 !important;
+            }
+
             .escala-print-legendas {
                 align-items: flex-start !important;
                 break-inside: avoid !important;
@@ -1288,7 +1331,7 @@ $headExtraStyle = '
             });
             $('.dropdown-menu.show, .tooltip.show').removeClass('show');
             document.activeElement && document.activeElement.blur();
-            document.title = '';
+            document.title = 'Escala mensal - <?php echo e($mesAnoLabel); ?>';
             window.setTimeout(function () {
                 window.print();
                 window.setTimeout(function () {
