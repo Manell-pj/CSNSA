@@ -3,6 +3,10 @@ require_once __DIR__ . '/notificacoes.php';
 
 $nomeUtilizadorTopo = $utilizadorSessao['nome'] ?? ($_SESSION['utilizador_nome'] ?? 'Utilizador');
 $emailUtilizadorTopo = $utilizadorSessao['email'] ?? '';
+$fotoUtilizadorTopo = trim((string) ($utilizadorSessao['foto'] ?? ''));
+if ($fotoUtilizadorTopo !== '' && preg_match('#^(https?:)?//#i', $fotoUtilizadorTopo)) {
+    $fotoUtilizadorTopo = '';
+}
 $notificacoesTopoTotal = 0;
 if (isset($conn) && isset($utilizadorSessao) && nt_schema_ready($conn) && ac_can($conn, (int) $utilizadorSessao['id'], 'notificacoes.ver')) {
     $notificacoesTopoTotal = nt_count_unread($conn, (int) $utilizadorSessao['id']);
@@ -27,9 +31,13 @@ if (isset($conn) && isset($utilizadorSessao) && nt_schema_ready($conn) && ac_can
             <li class="nav-item topbar-user dropdown hidden-caret">
                 <a class="dropdown-toggle profile-pic" data-bs-toggle="dropdown" href="#" aria-expanded="false">
                     <div class="avatar-sm">
-                        <span class="avatar-title rounded-circle border border-white bg-primary">
-                            <?php echo e(strtoupper(substr($nomeUtilizadorTopo, 0, 1))); ?>
-                        </span>
+                        <?php if ($fotoUtilizadorTopo !== ''): ?>
+                            <img src="<?php echo e($fotoUtilizadorTopo); ?>" alt="<?php echo e($nomeUtilizadorTopo); ?>" class="avatar-img rounded-circle border border-white">
+                        <?php else: ?>
+                            <span class="avatar-title rounded-circle border border-white bg-primary">
+                                <?php echo e(strtoupper(substr($nomeUtilizadorTopo, 0, 1))); ?>
+                            </span>
+                        <?php endif; ?>
                     </div>
                     <span class="profile-username">
                         <span class="op-7">Olá,</span>
@@ -41,9 +49,13 @@ if (isset($conn) && isset($utilizadorSessao) && nt_schema_ready($conn) && ac_can
                         <li>
                             <div class="user-box">
                                 <div class="avatar-lg">
-                                    <span class="avatar-title rounded bg-primary">
-                                        <?php echo e(strtoupper(substr($nomeUtilizadorTopo, 0, 1))); ?>
-                                    </span>
+                                    <?php if ($fotoUtilizadorTopo !== ''): ?>
+                                        <img src="<?php echo e($fotoUtilizadorTopo); ?>" alt="<?php echo e($nomeUtilizadorTopo); ?>" class="avatar-img rounded">
+                                    <?php else: ?>
+                                        <span class="avatar-title rounded bg-primary">
+                                            <?php echo e(strtoupper(substr($nomeUtilizadorTopo, 0, 1))); ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="u-text">
                                     <h4><?php echo e($nomeUtilizadorTopo); ?></h4>

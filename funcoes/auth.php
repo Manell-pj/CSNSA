@@ -19,7 +19,8 @@ function auth_user($conn)
         return null;
     }
 
-    $stmt = mysqli_prepare($conn, "SELECT id, nome, email, estado FROM utilizadores WHERE id = ? AND estado = 'ativo' LIMIT 1");
+    $fotoSelect = auth_column_exists($conn, 'utilizadores', 'foto') ? 'foto,' : 'NULL AS foto,';
+    $stmt = mysqli_prepare($conn, "SELECT id, nome, email, estado, $fotoSelect 1 AS auth_marker FROM utilizadores WHERE id = ? AND estado = 'ativo' LIMIT 1");
     mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
@@ -32,6 +33,18 @@ function auth_user($conn)
     }
 
     return $utilizador;
+}
+
+function auth_column_exists($conn, $table, $column)
+{
+    $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS total FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+    mysqli_stmt_bind_param($stmt, 'ss', $table, $column);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    return (int) ($row['total'] ?? 0) > 0;
 }
 
 function require_login($conn)

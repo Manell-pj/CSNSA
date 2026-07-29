@@ -24,6 +24,7 @@ if ($resPermissoes) {
 }
 
 $permissoesIdsPorCodigo = permissoes_ids_por_codigo($permissoesDisponiveis);
+$fotoUtilizadorReady = utilizadores_foto_column_ready($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -51,11 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
+        try {
+            $foto = $fotoUtilizadorReady ? utilizadores_guardar_foto($_FILES['foto'] ?? null) : null;
+        } catch (RuntimeException $e) {
+            redirect_with_message('danger', $e->getMessage());
+        }
+
         mysqli_begin_transaction($conn);
 
         try {
-            $stmt = mysqli_prepare($conn, 'INSERT INTO utilizadores (nome, email, password_hash, estado) VALUES (?, ?, ?, ?)');
-            mysqli_stmt_bind_param($stmt, 'ssss', $nome, $email, $passwordHash, $estado);
+            if ($fotoUtilizadorReady) {
+                $stmt = mysqli_prepare($conn, 'INSERT INTO utilizadores (nome, email, password_hash, estado, foto) VALUES (?, ?, ?, ?, ?)');
+                mysqli_stmt_bind_param($stmt, 'sssss', $nome, $email, $passwordHash, $estado, $foto);
+            } else {
+                $stmt = mysqli_prepare($conn, 'INSERT INTO utilizadores (nome, email, password_hash, estado) VALUES (?, ?, ?, ?)');
+                mysqli_stmt_bind_param($stmt, 'ssss', $nome, $email, $passwordHash, $estado);
+            }
             mysqli_stmt_execute($stmt);
             $novoUtilizadorId = mysqli_insert_id($conn);
             mysqli_stmt_close($stmt);
@@ -64,8 +76,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             mysqli_commit($conn);
             redirect_with_message('success', 'Utilizador criado com sucesso.');
-        } catch (mysqli_sql_exception $e) {
+        } catch (Throwable $e) {
             mysqli_rollback($conn);
+            if ($fotoUtilizadorReady) {
+                utilizadores_apagar_foto($foto ?? '');
+            }
             redirect_with_message('danger', 'Não foi possível criar o utilizador. Verifique se o email já existe.');
         }
     }
@@ -104,13 +119,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mysqli_begin_transaction($conn);
 
         try {
+            $foto = null;
+            if ($fotoUtilizadorReady) {
+                $stmtFoto = mysqli_prepare($conn, 'SELECT foto FROM utilizadores WHERE id = ? LIMIT 1');
+                mysqli_stmt_bind_param($stmtFoto, 'i', $id);
+                mysqli_stmt_execute($stmtFoto);
+                $resFoto = mysqli_stmt_get_result($stmtFoto);
+                $rowFoto = mysqli_fetch_assoc($resFoto);
+                mysqli_stmt_close($stmtFoto);
+                $foto = utilizadores_guardar_foto($_FILES['foto'] ?? null, $rowFoto['foto'] ?? '');
+            }
+
             if ($password !== '') {
                 $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET nome = ?, email = ?, password_hash = ?, estado = ? WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'ssssi', $nome, $email, $passwordHash, $estado, $id);
+                if ($fotoUtilizadorReady) {
+                    $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET nome = ?, email = ?, password_hash = ?, estado = ?, foto = ? WHERE id = ?');
+                    mysqli_stmt_bind_param($stmt, 'sssssi', $nome, $email, $passwordHash, $estado, $foto, $id);
+                } else {
+                    $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET nome = ?, email = ?, password_hash = ?, estado = ? WHERE id = ?');
+                    mysqli_stmt_bind_param($stmt, 'ssssi', $nome, $email, $passwordHash, $estado, $id);
+                }
             } else {
-                $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET nome = ?, email = ?, estado = ? WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'sssi', $nome, $email, $estado, $id);
+                if ($fotoUtilizadorReady) {
+                    $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET nome = ?, email = ?, estado = ?, foto = ? WHERE id = ?');
+                    mysqli_stmt_bind_param($stmt, 'ssssi', $nome, $email, $estado, $foto, $id);
+                } else {
+                    $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET nome = ?, email = ?, estado = ? WHERE id = ?');
+                    mysqli_stmt_bind_param($stmt, 'sssi', $nome, $email, $estado, $id);
+                }
             }
 
             mysqli_stmt_execute($stmt);
@@ -120,9 +156,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             mysqli_commit($conn);
             redirect_with_message('success', 'Utilizador atualizado com sucesso.');
-        } catch (mysqli_sql_exception $e) {
+        } catch (Throwable $e) {
             mysqli_rollback($conn);
-            redirect_with_message('danger', 'Não foi possível atualizar o utilizador.');
+            $mensagem = $e instanceof RuntimeException ? $e->getMessage() : 'Nao foi possivel atualizar o utilizador.';
+            redirect_with_message('danger', $mensagem);
         }
     }
 
@@ -138,10 +175,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            $rowFoto = [];
+            if ($fotoUtilizadorReady) {
+                $stmtFoto = mysqli_prepare($conn, 'SELECT foto FROM utilizadores WHERE id = ? LIMIT 1');
+                mysqli_stmt_bind_param($stmtFoto, 'i', $id);
+                mysqli_stmt_execute($stmtFoto);
+                $resFoto = mysqli_stmt_get_result($stmtFoto);
+                $rowFoto = mysqli_fetch_assoc($resFoto) ?: [];
+                mysqli_stmt_close($stmtFoto);
+            }
+
             $stmt = mysqli_prepare($conn, 'DELETE FROM utilizadores WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'i', $id);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
+
+            if ($fotoUtilizadorReady) {
+                utilizadores_apagar_foto($rowFoto['foto'] ?? '');
+            }
 
             redirect_with_message('success', 'Utilizador removido com sucesso.');
         } catch (mysqli_sql_exception $e) {
@@ -151,11 +202,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $utilizadores = [];
-$sql = "SELECT u.id, u.nome, u.email, u.estado, u.ultimo_login_at,
+$fotoSelect = $fotoUtilizadorReady ? 'u.foto,' : 'NULL AS foto,';
+$fotoGroup = $fotoUtilizadorReady ? ', u.foto' : '';
+$sql = "SELECT u.id, u.nome, u.email, u.estado, u.ultimo_login_at, $fotoSelect
                COUNT(CASE WHEN upm.efeito = 'permitir' THEN 1 END) AS total_permissoes
         FROM utilizadores u
         LEFT JOIN utilizador_permissoes upm ON upm.utilizador_id = u.id
-        GROUP BY u.id, u.nome, u.email, u.estado, u.ultimo_login_at
+        GROUP BY u.id, u.nome, u.email, u.estado, u.ultimo_login_at $fotoGroup
         ORDER BY u.nome ASC";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_execute($stmt);
@@ -239,6 +292,12 @@ $alertMessage = $_GET['message'] ?? '';
                         </div>
                     <?php endif; ?>
 
+                    <?php if (!$fotoUtilizadorReady): ?>
+                        <div class="alert alert-warning" role="alert">
+                            A coluna foto ainda nao existe na tabela utilizadores. A gestao de fotografias fica disponivel depois de atualizar a base de dados.
+                        </div>
+                    <?php endif; ?>
+
                     <div class="card">
                         <div class="card-header">
                             <div class="d-flex align-items-center">
@@ -254,6 +313,7 @@ $alertMessage = $_GET['message'] ?? '';
                                 <table id="tabela-utilizadores" class="display table table-striped table-hover">
                                     <thead>
                                         <tr>
+                                            <th>Foto</th>
                                             <th>Nome</th>
                                             <th>Email</th>
                                             <th>Permissões</th>
@@ -265,6 +325,7 @@ $alertMessage = $_GET['message'] ?? '';
                                     <tbody>
                                         <?php foreach ($utilizadores as $utilizador): ?>
                                             <tr>
+                                                <td><?php render_utilizador_avatar($utilizador); ?></td>
                                                 <td><?php echo e($utilizador['nome']); ?></td>
                                                 <td><?php echo e($utilizador['email']); ?></td>
                                                 <td><?php echo (int) $utilizador['total_permissoes']; ?></td>
@@ -299,7 +360,7 @@ $alertMessage = $_GET['message'] ?? '';
 
     <div class="modal fade" id="modalCriarUtilizador" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg" role="document">
-            <form method="post" class="modal-content needs-validation" novalidate>
+            <form method="post" enctype="multipart/form-data" class="modal-content needs-validation" novalidate>
                 <input type="hidden" name="acao" value="criar">
                 <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                 <div class="modal-header border-0">
@@ -317,6 +378,13 @@ $alertMessage = $_GET['message'] ?? '';
                         <label class="form-label">Email *</label>
                         <input type="email" name="email" class="form-control" required>
                     </div>
+                    <?php if ($fotoUtilizadorReady): ?>
+                        <div class="mb-3">
+                            <label class="form-label">Fotografia</label>
+                            <input type="file" name="foto" class="form-control" accept="image/jpeg,image/png,image/webp">
+                            <small class="form-text text-muted">JPG, PNG ou WebP ate 3 MB.</small>
+                        </div>
+                    <?php endif; ?>
                     <div class="mb-3">
                         <label class="form-label">Palavra-passe *</label>
                         <input type="password" name="password" class="form-control" required>
@@ -349,7 +417,7 @@ $alertMessage = $_GET['message'] ?? '';
 
         <div class="modal fade" id="modalEditarUtilizador<?php echo (int) $utilizador['id']; ?>" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg" role="document">
-                <form method="post" class="modal-content needs-validation" novalidate>
+                <form method="post" enctype="multipart/form-data" class="modal-content needs-validation" novalidate>
                     <input type="hidden" name="id" value="<?php echo (int) $utilizador['id']; ?>">
                     <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
                     <div class="modal-header border-0">
@@ -367,6 +435,17 @@ $alertMessage = $_GET['message'] ?? '';
                             <label class="form-label">Email *</label>
                             <input type="email" name="email" class="form-control" value="<?php echo e($utilizador['email']); ?>" required>
                         </div>
+                        <?php if ($fotoUtilizadorReady): ?>
+                            <div class="mb-3">
+                                <label class="form-label">Fotografia</label>
+                                <div class="d-flex align-items-center gap-3 mb-2">
+                                    <?php render_utilizador_avatar($utilizador, 'lg'); ?>
+                                    <span class="text-muted">Carregue uma nova imagem para substituir a atual.</span>
+                                </div>
+                                <input type="file" name="foto" class="form-control" accept="image/jpeg,image/png,image/webp">
+                                <small class="form-text text-muted">JPG, PNG ou WebP ate 3 MB.</small>
+                            </div>
+                        <?php endif; ?>
                         <div class="mb-3">
                             <label class="form-label">Nova palavra-passe</label>
                             <input type="password" name="password" class="form-control" placeholder="Manter atual se ficar vazio">
