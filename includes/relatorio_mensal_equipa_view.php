@@ -113,7 +113,7 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
     <?php foreach ($funcionariosPorEquipa as $equipaNome => $funcionariosEquipa): ?>
         <div class="card report-team-section">
             <div class="card-header">
-                <h4 class="card-title mb-0">Totais por funcionário - Equipa <?php echo e($equipaNome); ?></h4>
+                <h4 class="card-title mb-0">Totais por funcionário | Equipa <?php echo e($equipaNome); ?></h4>
             </div>
             <div class="card-body">
                 <?php rm_render_totais_funcionarios_table($relatorio, $funcionariosEquipa, $totaisPorEquipa[$equipaNome], 'Total da equipa'); ?>

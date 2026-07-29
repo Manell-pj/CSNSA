@@ -84,6 +84,9 @@ $totais = $relatorio['totais_equipa'];
                         <div class="print-footer">Página <span class="page-number"></span></div>
                     <?php endif; ?>
                     <div class="report-header mb-4">
+                        <?php if ($isPrint): ?>
+                            <img src="assets/img/csnsa/logo-nsa.png" alt="Centro Social Nossa Senhora Auxiliadora" class="report-print-logo">
+                        <?php endif; ?>
                         <div>
                             <h3 class="fw-bold mb-1"><?php echo e($relatorio['meta']['instituicao']); ?></h3>
                             <h4 class="mb-1">Relatório mensal de assiduidade</h4>
@@ -263,6 +266,14 @@ $totais = $relatorio['totais_equipa'];
 
             .report-table {
                 font-size: 10px;
+            }
+
+            .report-print-logo {
+                display: block !important;
+                flex: 0 0 auto !important;
+                height: 18mm !important;
+                object-fit: contain !important;
+                width: 18mm !important;
             }
 
             .page-break {
