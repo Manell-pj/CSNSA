@@ -14,6 +14,8 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                         <th>Carga semanal</th>
                         <th>Dias previstos</th>
                         <th>Dias trabalhados</th>
+                        <th>Total horas previstas</th>
+                        <th>Total horas trabalhadas</th>
                         <th>Horas previstas</th>
                         <th>Horas trabalhadas</th>
                         <th>Horas extra</th>
@@ -42,6 +44,8 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                             <td><?php echo (int) $t['dias_trabalhados']; ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></td>
+                            <td><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></td>
+                            <td><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></td>
                             <td><?php echo e(rm_formatar_minutos($t['minutos_extra'])); ?></td>
                             <?php foreach ($relatorio['regras_extra'] as $regra): ?>
                                 <?php $percentagem = (string) (int) $regra['porcentagem']; ?>
@@ -67,6 +71,8 @@ if (!function_exists('rm_render_totais_funcionarios_table')) {
                         <th></th>
                         <th><?php echo (int) $t['dias_previstos']; ?></th>
                         <th><?php echo (int) $t['dias_trabalhados']; ?></th>
+                        <th><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></th>
+                        <th><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_previstos'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_trabalhados'])); ?></th>
                         <th><?php echo e(rm_formatar_minutos($t['minutos_extra'])); ?></th>
