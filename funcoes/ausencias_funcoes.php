@@ -132,6 +132,19 @@ function garantir_tipos_ausencia($conn)
 
 function get_funcionario_id_from_utilizador($conn, $utilizadorId)
 {
+    if (ausencias_column_exists($conn, 'utilizadores', 'funcionario_id')) {
+        $stmt = mysqli_prepare($conn, 'SELECT funcionario_id FROM utilizadores WHERE id = ? LIMIT 1');
+        mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
+        mysqli_stmt_execute($stmt);
+        $res = mysqli_stmt_get_result($stmt);
+        $r = mysqli_fetch_assoc($res);
+        mysqli_stmt_close($stmt);
+
+        if (!empty($r['funcionario_id'])) {
+            return (int) $r['funcionario_id'];
+        }
+    }
+
     $stmt = mysqli_prepare($conn, 'SELECT id FROM funcionarios WHERE utilizador_id = ? LIMIT 1');
     mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
     mysqli_stmt_execute($stmt);
@@ -151,6 +164,114 @@ function get_utilizador_id_from_funcionario($conn, $funcionarioId)
     mysqli_stmt_close($stmt);
 
     return $r['utilizador_id'] ?? null;
+}
+
+function ausencia_tipo_dia_escala($slug)
+{
+    $mapa = [
+        'ferias' => 'ferias',
+        'falta-justificada' => 'falta',
+        'baixa-medica' => 'baixa',
+        'folga' => 'folga',
+    ];
+
+    return $mapa[$slug] ?? null;
+}
+
+function ausencia_aplicar_pedido_na_escala($conn, array $pedido, $aprovadoPor, $nomeAprovador)
+{
+    $funcionarioId = (int) ($pedido['funcionario_id'] ?? 0);
+    $tipoDia = ausencia_tipo_dia_escala($pedido['slug'] ?? '');
+
+    if ($funcionarioId <= 0 || !$tipoDia || !ac_table_exists($conn, 'escala_funcionarios')) {
+        return 0;
+    }
+
+    $stmtFuncionario = mysqli_prepare($conn, 'SELECT id, utilizador_id, equipa_id FROM funcionarios WHERE id = ? LIMIT 1');
+    mysqli_stmt_bind_param($stmtFuncionario, 'i', $funcionarioId);
+    mysqli_stmt_execute($stmtFuncionario);
+    $funcionario = mysqli_fetch_assoc(mysqli_stmt_get_result($stmtFuncionario));
+    mysqli_stmt_close($stmtFuncionario);
+
+    if (!$funcionario) {
+        return 0;
+    }
+
+    $stmtGuardar = mysqli_prepare($conn, "INSERT INTO escala_funcionarios
+        (funcionario_id, utilizador_id, setor_id, equipa_id, ano, mes, data_escala, dia, tipo_dia, turno_id, substitui_funcionario_id, folga_trabalhada, observacoes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            utilizador_id = VALUES(utilizador_id),
+            equipa_id = VALUES(equipa_id),
+            ano = VALUES(ano),
+            mes = VALUES(mes),
+            dia = VALUES(dia),
+            tipo_dia = VALUES(tipo_dia),
+            turno_id = NULL,
+            substitui_funcionario_id = NULL,
+            folga_trabalhada = 0,
+            observacoes = LEFT(TRIM(CONCAT(IFNULL(observacoes, ''), ' ', VALUES(observacoes))), 255)");
+
+    $inicio = new DateTime($pedido['data_inicio']);
+    $fim = new DateTime($pedido['data_fim']);
+    $alterados = 0;
+    $recalculos = [];
+
+    while ($inicio <= $fim) {
+        $dataEscala = $inicio->format('Y-m-d');
+        $ano = (int) $inicio->format('Y');
+        $mes = (int) $inicio->format('n');
+        $dia = (int) $inicio->format('j');
+        $utilizadorId = $funcionario['utilizador_id'] === null ? null : (int) $funcionario['utilizador_id'];
+        $setorId = null;
+        $equipaId = $funcionario['equipa_id'] === null ? null : (int) $funcionario['equipa_id'];
+        $turnoId = null;
+        $substituiFuncionarioId = null;
+        $folgaTrabalhada = 0;
+        $observacoes = sprintf(
+            '%s aprovada (pedido %d) por %s em %s',
+            ucfirst(str_replace('-', ' ', (string) ($pedido['slug'] ?? 'ausencia'))),
+            (int) $pedido['id'],
+            $nomeAprovador,
+            date('Y-m-d H:i')
+        );
+
+        mysqli_stmt_bind_param(
+            $stmtGuardar,
+            'iiiiiisisiiis',
+            $funcionarioId,
+            $utilizadorId,
+            $setorId,
+            $equipaId,
+            $ano,
+            $mes,
+            $dataEscala,
+            $dia,
+            $tipoDia,
+            $turnoId,
+            $substituiFuncionarioId,
+            $folgaTrabalhada,
+            $observacoes
+        );
+        mysqli_stmt_execute($stmtGuardar);
+        $alterados++;
+        $recalculos[$dataEscala] = true;
+        $inicio->modify('+1 day');
+    }
+
+    mysqli_stmt_close($stmtGuardar);
+
+    if (function_exists('calcular_resumo_diario_assiduidade')) {
+        foreach (array_keys($recalculos) as $data) {
+            try {
+                calcular_resumo_diario_assiduidade($conn, $data, $funcionarioId);
+            } catch (Throwable $e) {
+                // O pedido continua aprovado; o resumo pode ser recalculado depois.
+            }
+        }
+    }
+
+    return $alterados;
 }
 
 function carregar_destinatarios_ausencia($conn)

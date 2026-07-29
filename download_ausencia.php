@@ -1,6 +1,7 @@
-﻿<?php
+<?php
 require_once 'config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/funcoes/ausencias_funcoes.php';
 
 $utilizador = require_login($conn);
 
@@ -11,7 +12,8 @@ if ($id <= 0) {
     exit;
 }
 
-$stmt = mysqli_prepare($conn, 'SELECT utilizador_id, ficheiro_justificativo FROM pedidos_ausencia WHERE id = ? LIMIT 1');
+$funcionarioSelect = ausencias_column_exists($conn, 'pedidos_ausencia', 'funcionario_id') ? 'funcionario_id,' : 'NULL AS funcionario_id,';
+$stmt = mysqli_prepare($conn, "SELECT utilizador_id, $funcionarioSelect ficheiro_justificativo FROM pedidos_ausencia WHERE id = ? LIMIT 1");
 mysqli_stmt_bind_param($stmt, 'i', $id);
 mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
@@ -25,7 +27,10 @@ if (!$pedido || empty($pedido['ficheiro_justificativo'])) {
 }
 
 $ownerId = (int) $pedido['utilizador_id'];
+$funcionarioPedidoId = (int) ($pedido['funcionario_id'] ?? 0);
+$funcionarioAtualId = (int) (get_funcionario_id_from_utilizador($conn, (int) $utilizador['id']) ?? 0);
 if ($ownerId !== (int) $utilizador['id']
+    && ($funcionarioPedidoId <= 0 || $funcionarioPedidoId !== $funcionarioAtualId)
     && !ac_can($conn, (int) $utilizador['id'], 'ausencias.gerir')
     && !ac_can($conn, (int) $utilizador['id'], 'justificacoes.validar')
     && !ac_can($conn, (int) $utilizador['id'], 'ferias.gerir')) {
@@ -73,8 +78,15 @@ $finfo = new finfo(FILEINFO_MIME_TYPE);
 $mime = $finfo->file($path) ?: 'application/octet-stream';
 $basename = 'anexo_ausencia_' . $id . '.' . pathinfo($path, PATHINFO_EXTENSION);
 
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
+header('X-Content-Type-Options: nosniff');
 header('Content-Type: ' . $mime);
-header('Content-Disposition: attachment; filename="' . $basename . '"');
+header('Content-Disposition: attachment; filename="' . $basename . '"; filename*=UTF-8\'\'' . rawurlencode($basename));
+header('Content-Transfer-Encoding: binary');
+header('Cache-Control: private, max-age=0, must-revalidate');
 header('Content-Length: ' . filesize($path));
 readfile($path);
 exit;

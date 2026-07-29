@@ -81,6 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_with_message('danger', 'Preencha todos os campos obrigatórios.');
         }
 
+        if ($temPermissaoAprovar && $funcionarioId <= 0) {
+            redirect_with_message('danger', 'Selecione o funcionario a que a justificacao se aplica.');
+        }
+
         if ($dataFim < $dataInicio) {
             redirect_with_message('danger', 'A data fim não pode ser anterior à data início.');
         }
@@ -202,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_with_message('danger', 'O pedido já foi tratado ou não existe.');
         }
 
-        // Se aprovado e for férias, insere em ferias_ausencias e marca dias na escala (preservando histórico).
+        // Se aprovado, regista a ausencia e reflete o tipo correto na escala mensal.
         if ($novoEstado === 'aprovado') {
             $stmtP = mysqli_prepare($conn, 'SELECT p.*, t.slug FROM pedidos_ausencia p INNER JOIN tipos_ausencia t ON t.id = p.tipo_ausencia_id WHERE p.id = ? LIMIT 1');
             mysqli_stmt_bind_param($stmtP, 'i', $pedidoId);
@@ -212,16 +216,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_close($stmtP);
 
             if ($pedidoRow) {
-                // Obter funcionário.
                 $funcionarioId = ($pedidosSuportamFuncionario && !empty($pedidoRow['funcionario_id'])) ? (int) $pedidoRow['funcionario_id'] : null;
                 if (!$funcionarioId) {
-                    $stmtF = mysqli_prepare($conn, 'SELECT id, utilizador_id FROM funcionarios WHERE utilizador_id = ? LIMIT 1');
-                    mysqli_stmt_bind_param($stmtF, 'i', $pedidoRow['utilizador_id']);
-                    mysqli_stmt_execute($stmtF);
-                    $rf = mysqli_stmt_get_result($stmtF);
-                    $funcRow = mysqli_fetch_assoc($rf);
-                    mysqli_stmt_close($stmtF);
-                    $funcionarioId = $funcRow['id'] ?? null;
+                    $funcionarioId = get_funcionario_id_from_utilizador($conn, (int) $pedidoRow['utilizador_id']);
+                }
+
+                if ($pedidosSuportamFuncionario && $funcionarioId && empty($pedidoRow['funcionario_id'])) {
+                    $stmtFixFuncionario = mysqli_prepare($conn, 'UPDATE pedidos_ausencia SET funcionario_id = ? WHERE id = ?');
+                    mysqli_stmt_bind_param($stmtFixFuncionario, 'ii', $funcionarioId, $pedidoId);
+                    mysqli_stmt_execute($stmtFixFuncionario);
+                    mysqli_stmt_close($stmtFixFuncionario);
+                    $pedidoRow['funcionario_id'] = (int) $funcionarioId;
                 }
 
                 $pedidoAusenciaId = (int) $pedidoRow['id'];
@@ -240,81 +245,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $aprovadoPor = (int) $utilizadorAutenticadoId;
                 $aprovadoAt = date('Y-m-d H:i:s');
 
-                $stmtIns = mysqli_prepare($conn, 'INSERT INTO ferias_ausencias
-                    (pedido_ausencia_id, funcionario_id, utilizador_id, tipo_ausencia_id, data_inicio, data_fim, hora_inicio, hora_fim, dia_completo, minutos_justificados, estado, motivo, ficheiro_justificativo, aprovado_por, aprovado_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                mysqli_stmt_bind_param(
-                    $stmtIns,
-                    'iiiissssiisssis',
-                    $pedidoAusenciaId,
-                    $funcionarioIdParam,
-                    $pedidoUtilizadorId,
-                    $tipoAusenciaId,
-                    $dataInicioPedido,
-                    $dataFimPedido,
-                    $horaInicioPedido,
-                    $horaFimPedido,
-                    $diaCompleto,
-                    $minutosJustificados,
-                    $estadoPedido,
-                    $motivoPedido,
-                    $ficheiroPedido,
-                    $aprovadoPor,
-                    $aprovadoAt
-                );
-                mysqli_stmt_execute($stmtIns);
-                mysqli_stmt_close($stmtIns);
-
-                // Garantir tabela de histórico existe.
-                if ($pedidoRow['slug'] === 'ferias' && $funcionarioId) {
-                $tabelaEscalaAprovacao = ac_table_exists($conn, 'escala_funcionarios') ? 'escala_funcionarios' : (ac_table_exists($conn, 'escala_mensal_dias') ? 'escala_mensal_dias' : null);
-                $usarHistoricoEscalaAntiga = $tabelaEscalaAprovacao === 'escala_mensal_dias';
-
-                if ($usarHistoricoEscalaAntiga) {
-                    ensure_escala_hist_table($conn);
+                if (ac_table_exists($conn, 'ferias_ausencias')) {
+                    $stmtIns = mysqli_prepare($conn, 'INSERT INTO ferias_ausencias
+                        (pedido_ausencia_id, funcionario_id, utilizador_id, tipo_ausencia_id, data_inicio, data_fim, hora_inicio, hora_fim, dia_completo, minutos_justificados, estado, motivo, ficheiro_justificativo, aprovado_por, aprovado_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                    mysqli_stmt_bind_param(
+                        $stmtIns,
+                        'iiiissssiisssis',
+                        $pedidoAusenciaId,
+                        $funcionarioIdParam,
+                        $pedidoUtilizadorId,
+                        $tipoAusenciaId,
+                        $dataInicioPedido,
+                        $dataFimPedido,
+                        $horaInicioPedido,
+                        $horaFimPedido,
+                        $diaCompleto,
+                        $minutosJustificados,
+                        $estadoPedido,
+                        $motivoPedido,
+                        $ficheiroPedido,
+                        $aprovadoPor,
+                        $aprovadoAt
+                    );
+                    mysqli_stmt_execute($stmtIns);
+                    mysqli_stmt_close($stmtIns);
                 }
-                // Atualizar escala_mensal_dias: para cada dia no período, se existir entrada, guardar histórico e marcar férias.
-                $cur = new DateTime($pedidoRow['data_inicio']);
-                $end = new DateTime($pedidoRow['data_fim']);
-                while ($tabelaEscalaAprovacao && $cur <= $end) {
-                    $d = $cur->format('Y-m-d');
-                    $q = mysqli_prepare($conn, "SELECT id, funcionario_id, tipo_dia, turno_id, 0 AS minutos_previstos, observacoes FROM $tabelaEscalaAprovacao WHERE funcionario_id = ? AND data_escala = ? LIMIT 1");
-                    mysqli_stmt_bind_param($q, 'is', $funcionarioId, $d);
-                    mysqli_stmt_execute($q);
-                    $resq = mysqli_stmt_get_result($q);
-                    $esc = mysqli_fetch_assoc($resq);
-                    mysqli_stmt_close($q);
 
-                    if ($esc) {
-                        $esc_id = (int) $esc['id'];
-                        $esc_func = (int) $esc['funcionario_id'];
-                        $esc_turno = isset($esc['turno_id']) ? (int) $esc['turno_id'] : null;
-                        $esc_tipo = (string) $esc['tipo_dia'];
-                        $esc_min = (int)$esc['minutos_previstos'];
-                        $esc_obs = $esc['observacoes'] ?? '';
-
-                        if ($usarHistoricoEscalaAntiga) {
-                            $stmtHist = mysqli_prepare($conn, 'INSERT INTO escala_mensal_dias_hist
-                                (escala_dia_id, funcionario_id, data_escala, turno_id, tipo_dia, minutos_previstos, observacoes, alterado_por)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                            mysqli_stmt_bind_param($stmtHist, 'iisisisi', $esc_id, $esc_func, $d, $esc_turno, $esc_tipo, $esc_min, $esc_obs, $aprovadoPor);
-                            mysqli_stmt_execute($stmtHist);
-                            mysqli_stmt_close($stmtHist);
-                        }
-
-                        $note = 'Férias aprovadas (pedido ' . $pedidoId . ') por ' . mysqli_real_escape_string($conn, $utilizadorAutenticado['nome']) . ' em ' . date('Y-m-d H:i');
-                        $qup = mysqli_prepare($conn, "UPDATE $tabelaEscalaAprovacao SET tipo_dia = ?, observacoes = CONCAT(IFNULL(observacoes, ''), ?) WHERE id = ?");
-                        $tfer = 'ferias';
-                        mysqli_stmt_bind_param($qup, 'ssi', $tfer, $note, $esc_id);
-                        mysqli_stmt_execute($qup);
-                        mysqli_stmt_close($qup);
-                    }
-
-                    $cur->modify('+1 day');
-                }
-                }
-             }
-         }
+                $pedidoRow['funcionario_id'] = $funcionarioIdParam;
+                ausencia_aplicar_pedido_na_escala($conn, $pedidoRow, $aprovadoPor, $utilizadorAutenticado['nome'] ?? 'Utilizador');
+            }
+        }
 
          redirect_with_message('success', $acao === 'aprovar' ? 'Pedido aprovado com sucesso.' : 'Pedido recusado com sucesso.');
     }
@@ -752,8 +713,8 @@ $alertMessage = $_GET['message'] ?? '';
                         <?php if ($temPermissaoAprovar): ?>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Funcionario</label>
-                            <select name="funcionario_id" class="form-select">
-                                <option value="">Associar ao utilizador autenticado</option>
+                            <select name="funcionario_id" class="form-select" required>
+                                <option value="">Selecionar funcionario</option>
                                 <?php foreach ($destinatariosAusencia as $destinatarioAusencia): ?>
                                     <option value="<?php echo (int) $destinatarioAusencia['funcionario_id']; ?>"><?php echo e($destinatarioAusencia['nome']); ?></option>
                                 <?php endforeach; ?>
