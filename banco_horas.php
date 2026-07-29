@@ -192,7 +192,6 @@ foreach ($funcionarios as $funcionario) {
                                             <th>Horas previstas</th>
                                             <th>Horas trabalhadas</th>
                                             <th>Saldo final</th>
-                                            <th>Ajustes</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -204,7 +203,6 @@ foreach ($funcionarios as $funcionario) {
                                                 <td><span class="badge badge-secondary"><?php echo e(ht_formatar_minutos($funcionario['minutos_previstos'])); ?></span></td>
                                                 <td><span class="badge badge-primary"><?php echo e(ht_formatar_minutos($funcionario['minutos_trabalhados'])); ?></span></td>
                                                 <td><span class="badge badge-<?php echo $funcionario['saldo_final'] >= 0 ? 'success' : 'danger'; ?>"><?php echo e(ht_formatar_minutos($funcionario['saldo_final'])); ?></span></td>
-                                                <td><span class="badge badge-info"><?php echo e(ht_formatar_minutos($funcionario['minutos_ajustados'])); ?></span></td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>

@@ -1,10 +1,10 @@
-<div class="card">
-    <div class="card-header">
-        <h4 class="card-title mb-0">Totais por funcionário</h4>
-    </div>
-    <div class="card-body">
+<?php
+if (!function_exists('rm_render_totais_funcionarios_table')) {
+    function rm_render_totais_funcionarios_table(array $relatorio, array $funcionariosTabela, array $totaisTabela, string $totalLabel = 'Total da equipa')
+    {
+        ?>
         <div class="table-responsive">
-            <table class="display table table-striped table-hover report-table report-datatable">
+            <table class="display table table-striped table-hover report-table <?php echo empty($GLOBALS['isPrint']) ? 'report-datatable' : ''; ?>">
                 <thead>
                     <tr>
                         <th>Funcionário</th>
@@ -30,7 +30,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($relatorio['funcionarios'] as $funcionario): ?>
+                    <?php foreach ($funcionariosTabela as $funcionario): ?>
                         <?php $t = $funcionario['totais']; ?>
                         <tr>
                             <td><?php echo e($funcionario['nome']); ?></td>
@@ -58,9 +58,9 @@
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot>
-                    <?php $t = $relatorio['totais_equipa']; ?>
+                    <?php $t = $totaisTabela; ?>
                     <tr>
-                        <th>Total da equipa</th>
+                        <th><?php echo e($totalLabel); ?></th>
                         <th></th>
                         <th></th>
                         <th></th>
@@ -85,10 +85,51 @@
                 </tfoot>
             </table>
         </div>
-    </div>
-</div>
+        <?php
+    }
+}
+?>
 
-<?php if (empty($isPrint)): ?>
+<?php if (!empty($isPrint)): ?>
+    <?php
+    $funcionariosPorEquipa = [];
+    $totaisPorEquipa = [];
+    foreach ($relatorio['funcionarios'] as $funcionario) {
+        $equipaNome = trim((string) ($funcionario['equipa'] ?? ''));
+        if ($equipaNome === '' || $equipaNome === '-') {
+            $equipaNome = 'Sem equipa';
+        }
+
+        if (!isset($funcionariosPorEquipa[$equipaNome])) {
+            $funcionariosPorEquipa[$equipaNome] = [];
+            $totaisPorEquipa[$equipaNome] = rm_totais_vazios($relatorio['regras_extra']);
+        }
+
+        $funcionariosPorEquipa[$equipaNome][] = $funcionario;
+        rm_somar_totais($totaisPorEquipa[$equipaNome], $funcionario['totais']);
+    }
+    ?>
+
+    <?php foreach ($funcionariosPorEquipa as $equipaNome => $funcionariosEquipa): ?>
+        <div class="card report-team-section">
+            <div class="card-header">
+                <h4 class="card-title mb-0">Totais por funcionário - Equipa <?php echo e($equipaNome); ?></h4>
+            </div>
+            <div class="card-body">
+                <?php rm_render_totais_funcionarios_table($relatorio, $funcionariosEquipa, $totaisPorEquipa[$equipaNome], 'Total da equipa'); ?>
+            </div>
+        </div>
+    <?php endforeach; ?>
+<?php else: ?>
+    <div class="card">
+        <div class="card-header">
+            <h4 class="card-title mb-0">Totais por funcionário</h4>
+        </div>
+        <div class="card-body">
+            <?php rm_render_totais_funcionarios_table($relatorio, $relatorio['funcionarios'], $relatorio['totais_equipa'], 'Total da equipa'); ?>
+        </div>
+    </div>
+
     <?php foreach ($relatorio['funcionarios'] as $funcionario): ?>
         <div class="page-break">
             <?php include __DIR__ . '/relatorio_mensal_individual_view.php'; ?>
