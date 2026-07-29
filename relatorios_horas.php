@@ -29,7 +29,16 @@ if ($mes < 1 || $mes > 12) {
     $mes = $mesAtual;
 }
 
-$relatorioFuncionarioId = ($isPrint && $funcionarioId > 0) ? $funcionarioId : 0;
+$todosFuncionarios = rm_carregar_funcionarios_relatorio($conn, 0, $equipaId);
+$funcionarioIds = array_map('intval', array_keys($todosFuncionarios));
+
+if (!$isPrint && $exportar !== 'xlsx') {
+    if ($funcionarioId <= 0 || !in_array($funcionarioId, $funcionarioIds, true)) {
+        $funcionarioId = $funcionarioIds[0] ?? 0;
+    }
+}
+
+$relatorioFuncionarioId = (($isPrint || $exportar === '') && $funcionarioId > 0) ? $funcionarioId : 0;
 $relatorioEquipaId = $relatorioFuncionarioId > 0 ? 0 : $equipaId;
 $relatorio = rm_carregar_relatorio_mensal($conn, $ano, $mes, $relatorioFuncionarioId, $relatorioEquipaId, $utilizadorSessao['nome'] ?? 'Utilizador');
 
@@ -42,7 +51,6 @@ if ($isPrint) {
     ac_require_permission($conn, $utilizadorSessao, 'relatorios.exportar');
 }
 
-$todosFuncionarios = rm_carregar_funcionarios_relatorio($conn, 0, 0);
 $equipas = [];
 if (rm_table_exists($conn, 'equipas')) {
     $res = mysqli_query($conn, 'SELECT id, nome FROM equipas WHERE ativo = 1 ORDER BY nome ASC');
@@ -104,7 +112,7 @@ $totais = $relatorio['totais_equipa'];
                             </div>
                             <div class="card-body">
                                 <form method="get" class="row g-3 align-items-end">
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label">Mês</label>
                                         <select name="mes" class="form-select">
                                             <?php for ($i = 1; $i <= 12; $i++): ?>
@@ -112,11 +120,11 @@ $totais = $relatorio['totais_equipa'];
                                             <?php endfor; ?>
                                         </select>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label">Ano</label>
                                         <input type="number" name="ano" class="form-control" min="2000" max="2100" value="<?php echo (int) $ano; ?>">
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <label class="form-label">Equipa</label>
                                         <select name="equipa_id" class="form-select">
                                             <option value="0">Todas</option>
@@ -125,36 +133,31 @@ $totais = $relatorio['totais_equipa'];
                                             <?php endforeach; ?>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Funcionario</label>
+                                        <select name="funcionario_id" class="form-select js-submit-on-change">
+                                            <?php if (empty($todosFuncionarios)): ?>
+                                                <option value="0">Sem funcionarios</option>
+                                            <?php endif; ?>
+                                            <?php foreach ($todosFuncionarios as $funcionarioOpcao): ?>
+                                                <option value="<?php echo (int) $funcionarioOpcao['id']; ?>" <?php echo (int) $funcionarioOpcao['id'] === $funcionarioId ? 'selected' : ''; ?>>
+                                                    <?php echo e($funcionarioOpcao['nome']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2 d-flex gap-2">
                                         <button type="submit" class="btn btn-primary w-100"><i class="fa fa-filter"></i> Ver</button>
+                                        <?php if ($funcionarioId > 0): ?>
+                                            <a class="btn btn-secondary" href="relatorios_horas.php?<?php echo http_build_query(['ano' => $ano, 'mes' => $mes, 'funcionario_id' => $funcionarioId, 'exportar' => 'pdf']); ?>" target="_blank" title="Imprimir funcionario">
+                                                <i class="fa fa-print"></i>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </form>
                             </div>
                         </div>
 
-                        <div class="card mb-4 no-print">
-                            <div class="card-header">
-                                <h4 class="card-title mb-0">Relatório individual</h4>
-                            </div>
-                            <div class="card-body">
-                                <form method="get" class="row g-3 align-items-end" target="_blank">
-                                    <input type="hidden" name="ano" value="<?php echo (int) $ano; ?>">
-                                    <input type="hidden" name="mes" value="<?php echo (int) $mes; ?>">
-                                    <input type="hidden" name="exportar" value="pdf">
-                                    <div class="col-md-10">
-                                        <label class="form-label">Funcionário</label>
-                                        <select name="funcionario_id" class="form-select">
-                                            <?php foreach ($todosFuncionarios as $funcionario): ?>
-                                                <option value="<?php echo (int) $funcionario['id']; ?>"><?php echo e($funcionario['nome']); ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <button type="submit" class="btn btn-secondary w-100"><i class="fa fa-print"></i> Imprimir</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
                     <?php endif; ?>
 
                     <div class="row">
@@ -192,7 +195,7 @@ $totais = $relatorio['totais_equipa'];
                         </div>
                     </div>
 
-                    <?php if ($isPrint && $relatorioFuncionarioId > 0): ?>
+                    <?php if ($relatorioFuncionarioId > 0): ?>
                         <?php $funcionario = reset($relatorio['funcionarios']); ?>
                         <?php if (!$funcionario): ?>
                             <div class="alert alert-info">Funcionário não encontrado para os filtros selecionados.</div>
@@ -284,6 +287,10 @@ $totais = $relatorio['totais_equipa'];
     <?php else: ?>
         <script>
             $(document).ready(function () {
+                $('.js-submit-on-change').on('change', function () {
+                    this.form.submit();
+                });
+
                 $('.report-datatable').DataTable({
                     pageLength: 31,
                     order: [[0, 'asc']],
