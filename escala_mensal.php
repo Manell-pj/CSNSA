@@ -106,9 +106,48 @@ $hojeDia = (int) date('j');
 $alertType = $_GET['type'] ?? '';
 $alertMessage = $_GET['message'] ?? '';
 $headExtraStyle = '
+    html,
+    body {
+        background: #f5f7fd;
+    }
+
+    .main-panel > .escala-page-container {
+        margin-top: 69px;
+        max-width: unset;
+        min-height: calc(100% - 123px);
+        overflow: hidden;
+        padding: 0 !important;
+        width: 100%;
+    }
+
     .escala-print-area,
     .escala-print-logo,
     .print-footer {
+        display: none;
+    }
+
+    .escala-paper {
+        background: #fff;
+        border: 1px solid #555;
+        color: #111;
+        font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .escala-wrapper {
+        overflow-x: auto;
+        overflow-y: visible;
+        width: 100%;
+    }
+
+    .escala-table {
+        border-collapse: collapse;
+        table-layout: fixed;
+        width: max-content;
+    }
+
+    .escala-col-categoria,
+    .escala-categoria-col,
+    .escala-editor {
         display: none;
     }
 ';
@@ -126,7 +165,7 @@ $headExtraStyle = '
                 <?php include 'includes/header.php'; ?>
             </div>
 
-            <div class="container-fluid">
+            <div class="container escala-page-container">
                 <div class="page-inner">
                     <div class="page-header">
                         <h3 class="fw-bold mb-3">Escala Mensal</h3>
