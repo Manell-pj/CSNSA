@@ -440,7 +440,7 @@ $alertMessage = $_GET['message'] ?? '';
                                         <h4 class="card-title mb-0">Registos de <?php echo e($dataFiltroLabel); ?></h4>
                                         <form method="get" class="d-flex flex-column flex-sm-row gap-2 align-items-sm-center">
                                             <input type="date" name="data" class="form-control" value="<?php echo e($dataFiltro); ?>">
-                                            <button type="submit" class="btn btn-primary">
+                                            <button type="submit" class="btn btn-primary btn-sm">
                                                 <i class="fa fa-search"></i>
                                                 Ver
                                             </button>
