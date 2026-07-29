@@ -47,6 +47,101 @@ function utilizadores_foto_column_ready($conn)
     return $ready;
 }
 
+function utilizadores_funcionario_link_ready($conn)
+{
+    static $ready = null;
+
+    if ($ready === null) {
+        $ready = utilizadores_column_exists($conn, 'utilizadores', 'funcionario_id')
+            && utilizadores_column_exists($conn, 'funcionarios', 'utilizador_id');
+    }
+
+    return $ready;
+}
+
+function utilizadores_carregar_funcionarios_associaveis($conn)
+{
+    if (!utilizadores_funcionario_link_ready($conn)) {
+        return [];
+    }
+
+    $sql = "SELECT f.id, f.nome, f.numero_mecanografico, f.estado, f.utilizador_id, u.nome AS utilizador_nome
+            FROM funcionarios f
+            LEFT JOIN utilizadores u ON u.id = f.utilizador_id
+            WHERE f.estado <> 'inativo'
+            ORDER BY f.nome ASC";
+    $result = mysqli_query($conn, $sql);
+    $funcionarios = [];
+
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $funcionarios[(int) $row['id']] = $row;
+        }
+    }
+
+    return $funcionarios;
+}
+
+function utilizadores_sincronizar_funcionario($conn, $utilizadorId, $funcionarioId)
+{
+    if (!utilizadores_funcionario_link_ready($conn)) {
+        return;
+    }
+
+    $utilizadorId = (int) $utilizadorId;
+    $funcionarioId = (int) $funcionarioId;
+
+    if ($funcionarioId > 0) {
+        $stmt = mysqli_prepare($conn, 'SELECT id, utilizador_id FROM funcionarios WHERE id = ? LIMIT 1');
+        mysqli_stmt_bind_param($stmt, 'i', $funcionarioId);
+        mysqli_stmt_execute($stmt);
+        $funcionario = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        mysqli_stmt_close($stmt);
+
+        if (!$funcionario) {
+            throw new RuntimeException('Ficha de funcionario invalida.');
+        }
+
+        $funcionarioUtilizadorId = (int) ($funcionario['utilizador_id'] ?? 0);
+        if ($funcionarioUtilizadorId > 0 && $funcionarioUtilizadorId !== $utilizadorId) {
+            throw new RuntimeException('Esta ficha de funcionario ja esta associada a outro utilizador.');
+        }
+
+        $stmt = mysqli_prepare($conn, 'SELECT id FROM utilizadores WHERE funcionario_id = ? AND id <> ? LIMIT 1');
+        mysqli_stmt_bind_param($stmt, 'ii', $funcionarioId, $utilizadorId);
+        mysqli_stmt_execute($stmt);
+        $utilizadorComFuncionario = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        mysqli_stmt_close($stmt);
+
+        if ($utilizadorComFuncionario) {
+            throw new RuntimeException('Esta ficha de funcionario ja esta associada a outro utilizador.');
+        }
+    }
+
+    $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET utilizador_id = NULL WHERE utilizador_id = ? AND id <> ?');
+    mysqli_stmt_bind_param($stmt, 'ii', $utilizadorId, $funcionarioId);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+
+    if ($funcionarioId > 0) {
+        $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET funcionario_id = ? WHERE id = ?');
+        mysqli_stmt_bind_param($stmt, 'ii', $funcionarioId, $utilizadorId);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+
+        $stmt = mysqli_prepare($conn, 'UPDATE funcionarios SET utilizador_id = ? WHERE id = ?');
+        mysqli_stmt_bind_param($stmt, 'ii', $utilizadorId, $funcionarioId);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        return;
+    }
+
+    $stmt = mysqli_prepare($conn, 'UPDATE utilizadores SET funcionario_id = NULL WHERE id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $utilizadorId);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+}
+
 function utilizadores_foto_path($foto)
 {
     $foto = trim((string) $foto);
@@ -137,6 +232,32 @@ function render_utilizador_avatar(array $utilizador, $size = 'sm')
         echo '<span class="avatar-title ' . $rounded . ' bg-primary">' . e(strtoupper(substr($nome ?: 'U', 0, 1))) . '</span>';
     }
     echo '</div>';
+}
+
+function render_funcionario_associacao_select(array $funcionarios, $utilizadorId = 0, $selectedId = 0)
+{
+    echo '<select name="funcionario_id" class="form-select">';
+    echo '<option value="">Sem ficha associada</option>';
+
+    foreach ($funcionarios as $funcionario) {
+        $funcionarioId = (int) $funcionario['id'];
+        $linkedUserId = (int) ($funcionario['utilizador_id'] ?? 0);
+        $disabled = $linkedUserId > 0 && $linkedUserId !== (int) $utilizadorId;
+        $selected = $funcionarioId === (int) $selectedId ? ' selected' : '';
+        $label = $funcionario['nome'];
+
+        if (!empty($funcionario['numero_mecanografico'])) {
+            $label .= ' (' . $funcionario['numero_mecanografico'] . ')';
+        }
+
+        if ($disabled) {
+            $label .= ' - associado a ' . ($funcionario['utilizador_nome'] ?: 'outro utilizador');
+        }
+
+        echo '<option value="' . $funcionarioId . '"' . $selected . ($disabled ? ' disabled' : '') . '>' . e($label) . '</option>';
+    }
+
+    echo '</select>';
 }
 
 function permissoes_postadas()

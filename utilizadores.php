@@ -25,6 +25,8 @@ if ($resPermissoes) {
 
 $permissoesIdsPorCodigo = permissoes_ids_por_codigo($permissoesDisponiveis);
 $fotoUtilizadorReady = utilizadores_foto_column_ready($conn);
+$associacaoFuncionarioReady = utilizadores_funcionario_link_ready($conn);
+$funcionariosAssociaveis = utilizadores_carregar_funcionarios_associaveis($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -39,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = get_post_value('email');
         $password = $_POST['password'] ?? '';
         $estado = get_post_value('estado') ?: 'ativo';
+        $funcionarioAssociadoId = $associacaoFuncionarioReady ? nullable_int($_POST['funcionario_id'] ?? '') : null;
         $permissoes = permissoes_postadas();
         ac_require_permission($conn, $utilizadorSessao, 'permissoes.gerir');
 
@@ -73,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mysqli_stmt_close($stmt);
 
             guardar_permissoes_utilizador($conn, $novoUtilizadorId, $permissoes, $permissoesDisponiveis);
+            utilizadores_sincronizar_funcionario($conn, $novoUtilizadorId, $funcionarioAssociadoId ?? 0);
 
             mysqli_commit($conn);
             redirect_with_message('success', 'Utilizador criado com sucesso.');
@@ -91,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = get_post_value('email');
         $password = $_POST['password'] ?? '';
         $estado = get_post_value('estado') ?: 'ativo';
+        $funcionarioAssociadoId = $associacaoFuncionarioReady ? nullable_int($_POST['funcionario_id'] ?? '') : null;
         $permissoes = permissoes_postadas();
         ac_require_permission($conn, $utilizadorSessao, 'permissoes.gerir');
 
@@ -119,6 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mysqli_begin_transaction($conn);
 
         try {
+            utilizadores_sincronizar_funcionario($conn, $id, $funcionarioAssociadoId ?? 0);
+
             $foto = null;
             if ($fotoUtilizadorReady) {
                 $stmtFoto = mysqli_prepare($conn, 'SELECT foto FROM utilizadores WHERE id = ? LIMIT 1');
@@ -185,6 +192,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($stmtFoto);
             }
 
+            if ($associacaoFuncionarioReady) {
+                $stmtFuncionario = mysqli_prepare($conn, 'UPDATE funcionarios SET utilizador_id = NULL WHERE utilizador_id = ?');
+                mysqli_stmt_bind_param($stmtFuncionario, 'i', $id);
+                mysqli_stmt_execute($stmtFuncionario);
+                mysqli_stmt_close($stmtFuncionario);
+            }
+
             $stmt = mysqli_prepare($conn, 'DELETE FROM utilizadores WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'i', $id);
             mysqli_stmt_execute($stmt);
@@ -204,11 +218,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $utilizadores = [];
 $fotoSelect = $fotoUtilizadorReady ? 'u.foto,' : 'NULL AS foto,';
 $fotoGroup = $fotoUtilizadorReady ? ', u.foto' : '';
-$sql = "SELECT u.id, u.nome, u.email, u.estado, u.ultimo_login_at, $fotoSelect
+$funcionarioSelect = $associacaoFuncionarioReady ? 'u.funcionario_id, f.nome AS funcionario_nome,' : 'NULL AS funcionario_id, NULL AS funcionario_nome,';
+$funcionarioJoin = $associacaoFuncionarioReady ? 'LEFT JOIN funcionarios f ON f.id = u.funcionario_id' : '';
+$funcionarioGroup = $associacaoFuncionarioReady ? ', u.funcionario_id, f.nome' : '';
+$sql = "SELECT u.id, u.nome, u.email, u.estado, u.ultimo_login_at, $fotoSelect $funcionarioSelect
                COUNT(CASE WHEN upm.efeito = 'permitir' THEN 1 END) AS total_permissoes
         FROM utilizadores u
+        $funcionarioJoin
         LEFT JOIN utilizador_permissoes upm ON upm.utilizador_id = u.id
-        GROUP BY u.id, u.nome, u.email, u.estado, u.ultimo_login_at $fotoGroup
+        GROUP BY u.id, u.nome, u.email, u.estado, u.ultimo_login_at $fotoGroup $funcionarioGroup
         ORDER BY u.nome ASC";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_execute($stmt);
@@ -298,6 +316,12 @@ $alertMessage = $_GET['message'] ?? '';
                         </div>
                     <?php endif; ?>
 
+                    <?php if (!$associacaoFuncionarioReady): ?>
+                        <div class="alert alert-warning" role="alert">
+                            A associacao a fichas de funcionario fica disponivel depois de atualizar as colunas utilizadores.funcionario_id e funcionarios.utilizador_id.
+                        </div>
+                    <?php endif; ?>
+
                     <div class="card">
                         <div class="card-header">
                             <div class="d-flex align-items-center">
@@ -316,6 +340,7 @@ $alertMessage = $_GET['message'] ?? '';
                                             <th>Foto</th>
                                             <th>Nome</th>
                                             <th>Email</th>
+                                            <th>Funcionario</th>
                                             <th>Permissões</th>
                                             <th>Último acesso</th>
                                             <th>Estado</th>
@@ -328,6 +353,7 @@ $alertMessage = $_GET['message'] ?? '';
                                                 <td><?php render_utilizador_avatar($utilizador); ?></td>
                                                 <td><?php echo e($utilizador['nome']); ?></td>
                                                 <td><?php echo e($utilizador['email']); ?></td>
+                                                <td><?php echo e($utilizador['funcionario_nome'] ?: '-'); ?></td>
                                                 <td><?php echo (int) $utilizador['total_permissoes']; ?></td>
                                                 <td><?php echo $utilizador['ultimo_login_at'] ? e(date('d/m/Y H:i', strtotime($utilizador['ultimo_login_at']))) : '-'; ?></td>
                                                 <td>
@@ -383,6 +409,13 @@ $alertMessage = $_GET['message'] ?? '';
                             <label class="form-label">Fotografia</label>
                             <input type="file" name="foto" class="form-control" accept="image/jpeg,image/png,image/webp">
                             <small class="form-text text-muted">JPG, PNG ou WebP ate 3 MB.</small>
+                        </div>
+                    <?php endif; ?>
+                    <?php if ($associacaoFuncionarioReady): ?>
+                        <div class="mb-3">
+                            <label class="form-label">Ficha de funcionario</label>
+                            <?php render_funcionario_associacao_select($funcionariosAssociaveis); ?>
+                            <small class="form-text text-muted">Use esta ligacao para incluir o utilizador em turnos, ponto e relatorios de horas.</small>
                         </div>
                     <?php endif; ?>
                     <div class="mb-3">
@@ -444,6 +477,13 @@ $alertMessage = $_GET['message'] ?? '';
                                 </div>
                                 <input type="file" name="foto" class="form-control" accept="image/jpeg,image/png,image/webp">
                                 <small class="form-text text-muted">JPG, PNG ou WebP ate 3 MB.</small>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($associacaoFuncionarioReady): ?>
+                            <div class="mb-3">
+                                <label class="form-label">Ficha de funcionario</label>
+                                <?php render_funcionario_associacao_select($funcionariosAssociaveis, (int) $utilizador['id'], (int) ($utilizador['funcionario_id'] ?? 0)); ?>
+                                <small class="form-text text-muted">Use esta ligacao para incluir o utilizador em turnos, ponto e relatorios de horas.</small>
                             </div>
                         <?php endif; ?>
                         <div class="mb-3">
